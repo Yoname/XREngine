@@ -8,52 +8,31 @@ import {
   NormalPass,
   OutlineEffect,
   RenderPass,
+  SMAAEffect,
   SSAOEffect,
   ToneMappingEffect
 } from 'postprocessing'
-import { PerspectiveCamera, sRGBEncoding, WebGL1Renderer, WebGLRenderer, WebGLRenderTarget } from 'three'
+import { PerspectiveCamera, sRGBEncoding, WebGL1Renderer, WebGLRenderer, WebGLRendererParameters } from 'three'
+
 import { ClientStorage } from '../common/classes/ClientStorage'
+import { ExponentialMovingAverage } from '../common/classes/ExponentialAverageCurve'
 import { nowMilliseconds } from '../common/functions/nowMilliseconds'
 import { Engine } from '../ecs/classes/Engine'
 import { EngineEvents } from '../ecs/classes/EngineEvents'
-import { System } from '../ecs/classes/System'
-import WebGL from './THREE.WebGL'
-import { FXAAEffect } from './effects/FXAAEffect'
-import { LinearTosRGBEffect } from './effects/LinearTosRGBEffect'
-import { World } from '../ecs/classes/World'
-import { configureEffectComposer } from './functions/configureEffectComposer'
-import { dispatchLocal } from '../networking/functions/dispatchFrom'
 import { accessEngineState, EngineActions, EngineActionType } from '../ecs/classes/EngineService'
+import { World } from '../ecs/classes/World'
+import { dispatchLocal } from '../networking/functions/dispatchFrom'
+import { receiveActionOnce } from '../networking/functions/matchActionOnce'
+import { LinearTosRGBEffect } from './effects/LinearTosRGBEffect'
 import { accessEngineRendererState, EngineRendererAction, EngineRendererReceptor } from './EngineRendererState'
 import { databasePrefix, RENDERER_SETTINGS } from './EngineRnedererConstants'
-import { ExponentialMovingAverage } from '../common/classes/ExponentialAverageCurve'
+import { configureEffectComposer } from './functions/configureEffectComposer'
+import WebGL from './THREE.WebGL'
 
 export interface EffectComposerWithSchema extends EffectComposer {
-  // TODO: 'postprocessing' needs typing, we could create a '@types/postprocessing' package?
-  renderer: WebGLRenderer
-  inputBuffer: WebGLRenderTarget
-  outputBuffer: WebGLRenderTarget
-  copyPass: any
-  depthTexture: any
-  passes: any[]
-  autoRenderToScreen: boolean
-  multisampling: number
-  getRenderer()
-  replaceRenderer(renderer, updateDOM)
-  createDepthTexture()
-  deleteDepthTexture()
-  createBuffer(depthBuffer, stencilBuffer, type, multisampling)
-  addPass(renderPass: any)
-  removePass()
-  removeAllPasses()
-  render(delta: number)
-  setSize(width: number, height: number, arg2: boolean)
-  reset()
-  dispose()
-
-  // this is what this is for, i just added the EffectComposer typings above
   OutlineEffect: OutlineEffect
-  FXAAEffect: FXAAEffect
+  // FXAAEffect: FXAAEffect
+  SMAAEffect: SMAAEffect
   SSAOEffect: SSAOEffect
   DepthOfFieldEffect: DepthOfFieldEffect
   BloomEffect: BloomEffect
@@ -66,11 +45,6 @@ export interface EffectComposerWithSchema extends EffectComposer {
 
 let lastRenderTime = 0
 
-type EngineRendererProps = {
-  canvas: HTMLCanvasElement
-  enabled: boolean
-}
-
 export class EngineRenderer {
   static instance: EngineRenderer
 
@@ -80,13 +54,12 @@ export class EngineRenderer {
   /** Maximum Quality level of the rendered. **Default** value is 5. */
   maxQualityLevel = 5
   /** point at which we downgrade quality level (large delta) */
-  maxRenderDelta = 1000 / 40 // 40 fps = 25 ms
+  maxRenderDelta = 1000 / 28 // 28 fps = 35 ms  (on some devices, rAF updates at 30fps, e.g., Low Power Mode)
   /** point at which we upgrade quality level (small delta) */
   minRenderDelta = 1000 / 55 // 55 fps = 18 ms
   /** Resoulion scale. **Default** value is 1. */
   scaleFactor = 1
 
-  postProcessingConfig = null
   renderPass: RenderPass
   normalPass: NormalPass
   renderContext: WebGLRenderingContext | WebGL2RenderingContext
@@ -103,8 +76,11 @@ export class EngineRenderer {
   /** init ExponentialMovingAverage */
   movingAverage = new ExponentialMovingAverage(this.averageTimePeriods)
 
+  /** To Disable update for renderer */
+  disableUpdate = false
+
   /** Constructs WebGL Renderer System. */
-  constructor(attributes: EngineRendererProps) {
+  constructor() {
     EngineRenderer.instance = this
     this.onResize = this.onResize.bind(this)
 
@@ -114,23 +90,26 @@ export class EngineRenderer {
       WebGL.dispatchWebGLDisconnectedEvent()
     }
 
-    const canvas: HTMLCanvasElement = attributes.canvas ?? document.querySelector('canvas')
-    const context = this.supportWebGL2 ? canvas.getContext('webgl2') : canvas.getContext('webgl')
+    const canvas: HTMLCanvasElement = document.querySelector('canvas')!
+    const context = this.supportWebGL2 ? canvas.getContext('webgl2')! : canvas.getContext('webgl')!
 
     if (!context) {
       dispatchLocal(
         EngineActions.browserNotSupported(
-          'Your brower does not support webgl,or it disable webgl,Please enable webgl'
+          'Your browser does not have WebGL enabled. Please enable WebGL, or try another browser.'
         ) as any
       )
     }
 
     this.renderContext = context!
-    const options: any = {
+    const options: WebGLRendererParameters = {
+      precision: 'highp',
       powerPreference: 'high-performance',
+      stencil: false,
+      antialias: false,
+      depth: false,
       canvas,
       context,
-      antialias: !Engine.isHMD,
       preserveDrawingBuffer: !Engine.isHMD
     }
 
@@ -157,10 +136,10 @@ export class EngineRenderer {
     window.addEventListener('resize', this.onResize, false)
     this.onResize()
 
-    this.needsResize = true
     Engine.renderer.autoClear = true
+    Engine.effectComposer = new EffectComposer(Engine.renderer) as any
 
-    configureEffectComposer(EngineRenderer.instance.postProcessingConfig)
+    configureEffectComposer()
 
     Engine.currentWorld.receptors.push((action: EngineActionType) => {
       switch (action.type) {
@@ -188,7 +167,6 @@ export class EngineRenderer {
       const state = accessEngineRendererState()
       const engineState = accessEngineState()
       if (state.automatic.value && engineState.joinedWorld.value) this.changeQualityLevel()
-
       if (this.rendereringEnabled) {
         if (this.needsResize) {
           const curPixelRatio = Engine.renderer.getPixelRatio()
@@ -206,21 +184,17 @@ export class EngineRenderer {
           }
 
           state.qualityLevel.value > 0 && Engine.csm?.updateFrustums()
-          Engine.renderer.setSize(width, height, false)
-          Engine.effectComposer.setSize(width, height, false)
+          // Effect composer calls renderer.setSize internally
+          Engine.effectComposer.setSize(width, height, true)
           this.needsResize = false
         }
 
         state.qualityLevel.value > 0 && Engine.csm?.update()
-        if (state.usePostProcessing.value && Engine.effectComposer) {
+        if (state.usePostProcessing.value) {
           Engine.effectComposer.render(delta)
         } else {
           Engine.renderer.autoClear = true
           Engine.renderer.render(Engine.scene, Engine.camera)
-        }
-        // if on oculus, render one frame and freeze, just to create a preview of the scene
-        if (Engine.isHMD) {
-          this.rendereringEnabled = false
         }
       }
     }
@@ -259,28 +233,30 @@ export class EngineRenderer {
   }
 
   async loadGraphicsSettingsFromStorage() {
-    const [automatic, scaleFactor, useShadows, /* pbr, */ usePostProcessing] = await Promise.all([
+    const [automatic, qualityLevel, useShadows, /* pbr, */ usePostProcessing] = await Promise.all([
       ClientStorage.get(databasePrefix + RENDERER_SETTINGS.AUTOMATIC) as Promise<boolean>,
-      ClientStorage.get(databasePrefix + RENDERER_SETTINGS.SCALE_FACTOR) as Promise<number>,
+      ClientStorage.get(databasePrefix + RENDERER_SETTINGS.QUALITY_LEVEL) as Promise<number>,
       ClientStorage.get(databasePrefix + RENDERER_SETTINGS.USE_SHADOWS) as Promise<boolean>,
       // ClientStorage.get(databasePrefix + RENDERER_SETTINGS.PBR) as Promise<boolean>,
       ClientStorage.get(databasePrefix + RENDERER_SETTINGS.POST_PROCESSING) as Promise<boolean>
     ])
     dispatchLocal(EngineRendererAction.setAutomatic(automatic ?? true))
-    dispatchLocal(EngineRendererAction.setQualityLevel(scaleFactor ?? 1))
+    dispatchLocal(EngineRendererAction.setQualityLevel(qualityLevel ?? 1))
     dispatchLocal(EngineRendererAction.setShadows(useShadows ?? true))
     // dispatchLocal(EngineRendererAction.setPBR(pbr ?? true))
     dispatchLocal(EngineRendererAction.setPostProcessing(usePostProcessing ?? true))
   }
 }
 
-export default async function WebGLRendererSystem(world: World, props: EngineRendererProps): Promise<System> {
-  new EngineRenderer(props)
+export default async function WebGLRendererSystem(world: World) {
+  new EngineRenderer()
 
-  await EngineRenderer.instance.loadGraphicsSettingsFromStorage()
+  receiveActionOnce(EngineEvents.EVENTS.JOINED_WORLD, () => EngineRenderer.instance.loadGraphicsSettingsFromStorage())
   world.receptors.push(EngineRendererReceptor)
 
   return () => {
-    if (props.enabled) EngineRenderer.instance.execute(world.delta)
+    EngineRenderer.instance.execute(world.delta)
   }
 }
+
+globalThis.EngineRenderer = EngineRenderer

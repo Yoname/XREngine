@@ -1,5 +1,7 @@
 import { GeneralError } from '@feathersjs/errors'
+
 import { ServicesSeedConfig } from '@xrengine/common/src/interfaces/ServicesSeedConfig'
+
 import { copyDefaultProject, uploadLocalProjectToProvider } from '../../projects/project/project.class'
 import { seedApp } from './seeder'
 
@@ -15,7 +17,7 @@ export default function seeder(services: Array<ServicesSeedConfig>) {
       }
       copyDefaultProject()
       await app.service('project')._seedProject('default-project')
-      await uploadLocalProjectToProvider('default-project', app)
+      await uploadLocalProjectToProvider('default-project')
     }
   }
 }

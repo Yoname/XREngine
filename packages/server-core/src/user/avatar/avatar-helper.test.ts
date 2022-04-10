@@ -1,6 +1,9 @@
-import app from '../../../../server/src/app'
-import { getAvatarFromStaticResources } from './avatar-helper'
 import assert from 'assert'
+
+import { Application } from '../../../declarations'
+import { createFeathersExpressApp } from '../../createApp'
+import { getAvatarFromStaticResources } from './avatar-helper'
+
 // import { generateAvatarThumbnail } from './generateAvatarThumbnail'
 // import fs from 'fs'
 // import path from 'path'
@@ -8,9 +11,14 @@ import assert from 'assert'
 
 // const debugThumbnail = false
 
-
 // causes CI/CD weirdness
-describe.skip(('avatar-helper'), () => {
+describe('avatar-helper', () => {
+  let app: Application
+  before(async () => {
+    app = createFeathersExpressApp()
+    await app.setup()
+  })
+
   // describe('generateAvatarThumbnail', () => {
   //   it('should generate thumbnail', async () => {
   //     const inputGLBBuffer = fs.readFileSync(path.resolve(appRootPath.path, 'packages/projects/default-project/avatars/CyberbotBlack.glb'))
@@ -37,7 +45,7 @@ describe.skip(('avatar-helper'), () => {
     })
     it('should get all avatars and thumbnails', async () => {
       const result = await getAvatarFromStaticResources(app)
-      for(const avatar of result) {
+      for (const avatar of result) {
         assert(avatar.avatarId)
         assert(avatar.avatarURL)
         assert(avatar.thumbnailURL)

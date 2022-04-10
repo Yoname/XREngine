@@ -1,29 +1,38 @@
-import ModelNode from '../../nodes/ModelNode'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import BooleanInput from '../inputs/BooleanInput'
-import InputGroup from '../inputs/InputGroup'
-import SelectInput from '../inputs/SelectInput'
-import NodeEditor from './NodeEditor'
-import { Object3D } from 'three'
-import InteractableGroup from '../inputs/InteractableGroup'
-import { CommandManager } from '../../managers/CommandManager'
-import EditorCommands from '../../constants/EditorCommands'
-import SceneNode from '../../nodes/SceneNode'
-import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
-import ModelInput from '../inputs/ModelInput'
+import { AnimationClip, Object3D } from 'three'
+
+import { AssetLoader } from '@xrengine/engine/src/assets/classes/AssetLoader'
+import { AnimationManager } from '@xrengine/engine/src/avatar/AnimationManager'
+import { AnimationComponent } from '@xrengine/engine/src/avatar/components/AnimationComponent'
+import { LoopAnimationComponent } from '@xrengine/engine/src/avatar/components/LoopAnimationComponent'
+import { useEngineState } from '@xrengine/engine/src/ecs/classes/EngineService'
+import { getComponent, hasComponent, removeComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { traverseEntityNode } from '@xrengine/engine/src/ecs/functions/EntityTreeFunctions'
+import { useWorld } from '@xrengine/engine/src/ecs/functions/SystemHooks'
+import { InteractableComponent } from '@xrengine/engine/src/interaction/components/InteractableComponent'
+import { EntityNodeComponent } from '@xrengine/engine/src/scene/components/EntityNodeComponent'
+import { ErrorComponent } from '@xrengine/engine/src/scene/components/ErrorComponent'
+import { ModelComponent } from '@xrengine/engine/src/scene/components/ModelComponent'
+import { NameComponent } from '@xrengine/engine/src/scene/components/NameComponent'
+import { Object3DComponent } from '@xrengine/engine/src/scene/components/Object3DComponent'
+import {
+  deserializeInteractable,
+  SCENE_COMPONENT_INTERACTABLE,
+  SCENE_COMPONENT_INTERACTABLE_DEFAULT_VALUES
+} from '@xrengine/engine/src/scene/functions/loaders/InteractableFunctions'
+
 import ViewInArIcon from '@mui/icons-material/ViewInAr'
 
-/**
- * Declaring properties for ModalNodeEditor component.
- *
- * @author Robert Long
- * @type {Object}
- */
-type ModelNodeEditorProps = {
-  node?: any
-  multiEdit?: boolean
-}
+import BooleanInput from '../inputs/BooleanInput'
+import { PropertiesPanelButton } from '../inputs/Button'
+import InputGroup from '../inputs/InputGroup'
+import InteractableGroup from '../inputs/InteractableGroup'
+import ModelInput from '../inputs/ModelInput'
+import SelectInput from '../inputs/SelectInput'
+import NodeEditor from './NodeEditor'
+import ShadowProperties from './ShadowProperties'
+import { EditorComponentType, updateProperty } from './Util'
 
 /**
  * ModelNodeEditor used to create editor view for the properties of ModelNode.
@@ -31,163 +40,139 @@ type ModelNodeEditorProps = {
  * @author Robert Long
  * @type {class component}
  */
-export const ModelNodeEditor = (props: ModelNodeEditorProps) => {
-  let [options, setOptions] = useState([])
+export const ModelNodeEditor: EditorComponentType = (props) => {
   const { t } = useTranslation()
+  const [isInteractable, setInteractable] = useState(false)
+  const [animationPlaying, setAnimationPlaying] = useState(false)
+  const engineState = useEngineState()
+  const entity = props.node.entity
+
+  const modelComponent = getComponent(entity, ModelComponent)
+  const animationComponent = getComponent(entity, AnimationComponent)
+  const obj3d = getComponent(entity, Object3DComponent)?.value ?? new Object3D() // quick hack to not crash
+  const hasError = engineState.errorEntities[entity].get()
+  const errorComponent = getComponent(entity, ErrorComponent)
 
   useEffect(() => {
-    const options = []
-    const sceneNode = Engine.scene as any as SceneNode
-    sceneNode.traverse((o) => {
-      if (o.isNode && o !== sceneNode && o.nodeName === 'Game') {
-        options.push({ label: o.name, value: o.uuid, nodeName: o.nodeName })
-      }
-    })
-    setOptions(options)
+    setInteractable(hasComponent(entity, InteractableComponent))
   }, [])
 
-  const onChangeGPUInstancingFlag = (isUsingGPUInstancing) => {
-    CommandManager.instance.setPropertyOnSelection('isUsingGPUInstancing', isUsingGPUInstancing)
+  const updateSrc = async (src: string) => {
+    // if(src !== modelComponent.src)
+    AssetLoader.Cache.delete(src)
+    await AssetLoader.loadAsync(src)
+    updateProperty(ModelComponent, 'src')(src)
   }
 
-  //function to handle change in property src
-  const onChangeSrc = (src, initialProps) => {
-    CommandManager.instance.executeCommandWithHistoryOnSelection(EditorCommands.MODIFY_PROPERTY, {
-      properties: { ...initialProps, src }
-    })
-  }
-
-  // TODO
-  // function to handle change in property src
-  // onChangeEnvMap = (src, initialProps) => {
-  //   CommandManager.instance.executeCommandWithHistoryOnSelection(EditorCommands.MODIFY_PROPERTY, { properties: { ...initialProps, src } })
-  // };
-
-  //fucntion to handle changes in activeChipIndex property
-  const onChangeAnimation = (activeClipIndex) => {
-    CommandManager.instance.setPropertyOnSelection('activeClipIndex', activeClipIndex)
-  }
-
-  const onChangeAnimationSource = (hasAvatarAnimations) => {
-    CommandManager.instance.setPropertyOnSelection('hasAvatarAnimations', hasAvatarAnimations)
-    props.node.reload()
-  }
-
-  //function to handle change in collidable property
-  // not currently in use, used by floor plan
-  // onChangeCollidable = collidable => {
-  //   CommandManager.instance.setPropertyOnSelection("collidable", collidable);
-  // };
-
-  const onChangeTextureOverride = (textureOverride) => {
-    CommandManager.instance.setPropertyOnSelection('textureOverride', textureOverride)
-  }
-
-  // function to handle changes in walkable property
-  // not currently in use, used by floor plan
-  // onChangeWalkable = walkable => {
-  //   CommandManager.instance.setPropertyOnSelection("walkable", walkable);
-  // };
-
-  // function to handle changes in castShadow property
-  const onChangeCastShadow = (castShadow) => {
-    CommandManager.instance.setPropertyOnSelection('castShadow', castShadow)
-  }
-
-  // function to handle changes in Receive shadow property
-  const onChangeReceiveShadow = (receiveShadow) => {
-    CommandManager.instance.setPropertyOnSelection('receiveShadow', receiveShadow)
-  }
-
-  // function to handle changes in interactable property
-  const onChangeInteractable = (interactable) => {
-    CommandManager.instance.setPropertyOnSelection('interactable', interactable)
-  }
-
-  // function to handle change in matrixAutoUpdate property
-  const onChangeUpdateDataMatrix = (matrixAutoUpdate) => {
-    CommandManager.instance.setPropertyOnSelection('_matrixAutoUpdate', matrixAutoUpdate)
-  }
-
-  // function to handle changes in payloadName property
-  const onChangeRole = (role, selected) => {
-    CommandManager.instance.setPropertyOnSelection('role', selected.label)
-  }
-
-  // function to handle changes in isAnimationPropertyDisabled
-  const isAnimationPropertyDisabled = () => {
-    const { multiEdit, node } = props
-    if (multiEdit) {
-      return CommandManager.instance.selected.some((selectedNode) => selectedNode.src !== node.src)
+  const loopAnimationComponent = getComponent(entity, LoopAnimationComponent)
+  const onPlayAnimation = () => {
+    if (loopAnimationComponent.action) loopAnimationComponent.action.stop()
+    if (!animationPlaying) {
+      if (
+        loopAnimationComponent.activeClipIndex >= 0 &&
+        animationComponent.animations[loopAnimationComponent.activeClipIndex]
+      ) {
+        loopAnimationComponent.action = animationComponent.mixer
+          .clipAction(
+            AnimationClip.findByName(
+              animationComponent.animations,
+              animationComponent.animations[loopAnimationComponent.activeClipIndex].name
+            )
+          )
+          .play()
+      }
     }
-    return false
+    setAnimationPlaying(!animationPlaying)
   }
 
-  // rendering view of ModelNodeEditor
+  const onChangeInteractable = (interact) => {
+    setInteractable(interact)
+    if (interact) {
+      deserializeInteractable(entity, { name: '', props: SCENE_COMPONENT_INTERACTABLE_DEFAULT_VALUES })
+    } else {
+      const editorComponent = getComponent(entity, EntityNodeComponent).components
+      editorComponent.splice(editorComponent.indexOf(SCENE_COMPONENT_INTERACTABLE), 1)
+      removeComponent(entity, InteractableComponent)
+    }
+  }
 
-  const node = props.node
+  const textureOverrideEntities = [] as { label: string; value: string }[]
+  traverseEntityNode(useWorld().entityTree.rootNode, (node) => {
+    if (node.entity === entity) return
+
+    textureOverrideEntities.push({
+      label: getComponent(node.entity, NameComponent).name,
+      value: node.uuid
+    })
+  })
+
+  const animations = loopAnimationComponent?.hasAvatarAnimations
+    ? AnimationManager.instance._animations
+    : obj3d.animations ?? []
+
+  const animationOptions = [{ label: 'None', value: -1 }]
+  if (animations?.length) animations.forEach((clip, i) => animationOptions.push({ label: clip.name, value: i }))
   return (
     <NodeEditor description={t('editor:properties.model.description')} {...props}>
       <InputGroup name="Model Url" label={t('editor:properties.model.lbl-modelurl')}>
-        <ModelInput value={node.src} onChange={onChangeSrc} />
-        {!(props.node as ModelNode).isValidURL && <div>{t('editor:properties.model.error-url')}</div>}
+        <ModelInput value={modelComponent.src} onChange={updateSrc} />
+        {hasError && errorComponent.srcError && (
+          <div style={{ marginTop: 2, color: '#FF8C00' }}>{t('editor:properties.model.error-url')}</div>
+        )}
+      </InputGroup>
+      <InputGroup name="Environment Map" label={t('editor:properties.model.lbl-envmapUrl')}>
+        <ModelInput value={modelComponent.envMapOverride} onChange={updateProperty(ModelComponent, 'envMapOverride')} />
+        {hasError && errorComponent.envMapError && (
+          <div style={{ marginTop: 2, color: '#FF8C00' }}>{t('editor:properties.model.error-url')}</div>
+        )}
+      </InputGroup>
+      <InputGroup name="Texture Override" label={t('editor:properties.model.lbl-textureOverride')}>
+        <SelectInput
+          options={textureOverrideEntities}
+          value={modelComponent.textureOverride}
+          onChange={updateProperty(ModelComponent, 'textureOverride')}
+        />
+      </InputGroup>
+      <InputGroup name="MatrixAutoUpdate" label={t('editor:properties.model.lbl-matrixAutoUpdate')}>
+        <BooleanInput
+          value={modelComponent.matrixAutoUpdate}
+          onChange={updateProperty(ModelComponent, 'matrixAutoUpdate')}
+        />
+      </InputGroup>
+      <InputGroup name="Is Using GPU Instancing" label={t('editor:properties.model.lbl-isGPUInstancing')}>
+        <BooleanInput
+          value={modelComponent.isUsingGPUInstancing}
+          onChange={updateProperty(ModelComponent, 'isUsingGPUInstancing')}
+        />
+      </InputGroup>
+      <InputGroup name="Is Dynamic" label={t('editor:properties.model.lbl-isDynamic')}>
+        <BooleanInput
+          value={modelComponent.isDynamicObject}
+          onChange={updateProperty(ModelComponent, 'isDynamicObject')}
+        />
       </InputGroup>
 
-      {/* TODO: implement environment map overrides. - source from scene env map, a custom BPCEM bake, URL string
-         <InputGroup name="Environment Map" label={t('editor:properties.model.lbl-modelurl')}>
-          <ModelInput value={node.src} onChange={onChangeSrc} />
-          {!(props.node as ModelNode).isValidURL && <div>{t('editor:properties.model.error-url')}</div>}
-        </InputGroup> */}
       <InputGroup name="Loop Animation" label={t('editor:properties.model.lbl-loopAnimation')}>
         <SelectInput
-          disabled={isAnimationPropertyDisabled()}
-          options={node.getClipOptions()}
-          value={node.activeClipIndex}
-          onChange={onChangeAnimation}
+          options={animationOptions}
+          value={loopAnimationComponent?.activeClipIndex}
+          onChange={updateProperty(LoopAnimationComponent, 'activeClipIndex')}
         />
       </InputGroup>
       <InputGroup name="Is Avatar" label={t('editor:properties.model.lbl-isAvatar')}>
-        <BooleanInput value={node.hasAvatarAnimations} onChange={onChangeAnimationSource} />
-      </InputGroup>
-      {/* <InputGroup name="Collidable" label={t('editor:properties.model.lbl-collidable')}>
-          // === not currently in use, used by floor plan === //
-          <BooleanInput
-            value={node.collidable}
-            onChange={onChangeCollidable}
-          />
-        </InputGroup> */}
-      <InputGroup name="Texture Override" label={t('editor:properties.model.lbl-textureOverride')}>
-        <SelectInput
-          options={Engine.scene.children.map((obj: Object3D) => {
-            return {
-              label: obj.name,
-              value: obj.uuid
-            }
-          })}
-          value={node.textureOverride}
-          onChange={onChangeTextureOverride}
+        <BooleanInput
+          value={loopAnimationComponent?.hasAvatarAnimations}
+          onChange={updateProperty(LoopAnimationComponent, 'hasAvatarAnimations')}
         />
       </InputGroup>
-      {/* <InputGroup name="Walkable" label={t('editor:properties.model.lbl-walkable')}>
-            // === not currently in use, used by floor plan === //
-            <BooleanInput
-            value={node.walkable}
-            onChange={onChangeWalkable}
-          />
-        </InputGroup> */}
-      <InputGroup name="Cast Shadow" label={t('editor:properties.model.lbl-castShadow')}>
-        <BooleanInput value={node.castShadow} onChange={onChangeCastShadow} />
-      </InputGroup>
-      <InputGroup name="Receive Shadow" label={t('editor:properties.model.lbl-receiveShadow')}>
-        <BooleanInput value={node.receiveShadow} onChange={onChangeReceiveShadow} />
-      </InputGroup>
+      <PropertiesPanelButton onClick={onPlayAnimation}>
+        {t(animationPlaying ? 'editor:properties.video.lbl-pause' : 'editor:properties.video.lbl-play')}
+      </PropertiesPanelButton>
       <InputGroup name="Interactable" label={t('editor:properties.model.lbl-interactable')}>
-        <BooleanInput value={node.interactable} onChange={onChangeInteractable} />
+        <BooleanInput value={isInteractable} onChange={onChangeInteractable} />
       </InputGroup>
-      <InputGroup name="MatrixAutoUpdate" label={t('editor:properties.model.lbl-matrixAutoUpdate')}>
-        <BooleanInput value={node._matrixAutoUpdate} onChange={onChangeUpdateDataMatrix} />
-      </InputGroup>
-      {node.interactable && <InteractableGroup node={node} t={t}></InteractableGroup>}
+      {isInteractable && <InteractableGroup node={props.node}></InteractableGroup>}
+      <ShadowProperties node={props.node} />
     </NodeEditor>
   )
 }

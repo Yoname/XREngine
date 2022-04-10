@@ -1,7 +1,12 @@
+import ApexCharts from 'apexcharts'
 import React from 'react'
 import ReactApexChart from 'react-apexcharts'
-const UserGraph = ({ data /* see data tab */ }) => {
+
+const UserGraph = ({ data, startDate, endDate }) => {
   let maxY = 0
+  let minX = new Date(startDate).getTime()
+  let maxX = new Date(endDate).getTime()
+
   if (data) {
     for (let analytic of data) {
       if (analytic) {
@@ -17,13 +22,15 @@ const UserGraph = ({ data /* see data tab */ }) => {
   const roundPower = Math.pow(10, Math.floor(Math.log10(maxY)))
   maxY = Math.ceil(maxY / roundPower) * roundPower
 
-  const [state, setState] = React.useState({
+  const graphData = {
     series: data,
     options: {
       chart: {
         id: 'area-datetime',
         type: 'area',
-        height: 350,
+        height: '100%',
+        width: '100%',
+        background: 'var(--purplePanel)',
         zoom: {
           autoScaleYaxis: true
         },
@@ -55,8 +62,8 @@ const UserGraph = ({ data /* see data tab */ }) => {
       },
       xaxis: {
         type: 'datetime',
-        min: data[0].data[0] ? data[0].data[0][0] : new Date().setTime(new Date().getTime() - 60000),
-        max: data[0].data[0] ? data[0].data[data[0].data.length - 1][0] : new Date().getTime(),
+        min: minX,
+        max: maxX,
         tickAmount: 6,
         labels: {
           style: {
@@ -106,11 +113,12 @@ const UserGraph = ({ data /* see data tab */ }) => {
       theme: {
         palette: 'palette1'
       }
-    }
-  })
+    } as ApexCharts.ApexOptions
+  }
+
   return (
-    <div id="chart-timeline" style={{ height: '30rem' }}>
-      <ReactApexChart options={state.options} series={state.series} type="line" height="100%" width="100%" />
+    <div id="chart-timeline" style={{ height: '25rem' }}>
+      <ReactApexChart options={graphData.options} series={graphData.series} type="line" height="100%" width="100%" />
     </div>
   )
 }

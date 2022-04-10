@@ -1,7 +1,10 @@
 import React from 'react'
 import styled from 'styled-components'
-import { InfoTooltip } from '../layout/Tooltip'
+
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import Grid from '@mui/material/Grid'
+
+import { InfoTooltip } from '../layout/Tooltip'
 
 /**
  * Used to provide styles for InputGroupContainer div.
@@ -13,7 +16,8 @@ export const InputGroupContainer = (styled as any).div`
   display: flex;
   flex-direction: row;
   padding: 4px 8px;
-  flex: 1;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   min-height: 24px;
 
   ${(props) =>
@@ -23,11 +27,11 @@ export const InputGroupContainer = (styled as any).div`
     opacity: 0.3;
   `}
 
-  & > label {
-    display: block;
-    color: ${(props) => props.theme.text2};
-    padding-bottom: 2px;
-    padding-top: 4px;
+  .tooltip {
+    color: var(--text2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 `
 
@@ -39,24 +43,22 @@ export const InputGroupContainer = (styled as any).div`
  */
 export const InputGroupContent = (styled as any).div`
   display: flex;
-  flex-direction: row;
-  flex: 1;
-  padding-left: 8px;
-  
+  justify-content: space-between; 
+
+  &>*:first-child {
+    max-width: calc(100% - 23px)
+  }
+
   & > label {
     display: block;
     width: 25%;
-    color: ${(props) => props.theme.text2};
+    color: var(--text2);
     padding-bottom: 2px;
     padding-top: 4px;
   }
 `
 
 export const InputGroupVerticalContainer = (styled as any).div`
-  display: flex;
-  flex-direction: column;
-  padding: 4px 8px;
-  flex: 1;
 
   ${(props) =>
     props.disabled &&
@@ -68,7 +70,7 @@ export const InputGroupVerticalContainer = (styled as any).div`
   & > label {
     display: block;
     width: 25%;
-    color: ${(props) => props.theme.text2};
+    color: var(--text2);
     padding-bottom: 2px;
     padding-top: 4px;
   }
@@ -88,16 +90,16 @@ export const InputGroupVerticalContent = (styled as any).div`
  *  @type {styled component}
  */
 export const InputGroupInfoIcon = (styled as any)(HelpOutlineIcon)`
-  width: 20px;
+  width: 18px;
   display: flex;
-  padding-left: 8px;
-  color: ${(props) => props.theme.blue};
+  margin-left: 5px;
+  color: var(--purpleColor);
   cursor: pointer;
   align-self: center;
 `
 
 interface InputGroupInfoProp {
-  info: string
+  info: string | JSX.Element
 }
 
 /**
@@ -109,7 +111,7 @@ interface InputGroupInfoProp {
  */
 export function InputGroupInfo({ info }: InputGroupInfoProp) {
   return (
-    <InfoTooltip info={info}>
+    <InfoTooltip title={info}>
       <InputGroupInfoIcon />
     </InfoTooltip>
   )
@@ -121,15 +123,14 @@ export function InputGroupInfo({ info }: InputGroupInfoProp) {
  * @author Robert Long
  * @type {Object}
  */
-
-interface InputGroupProp {
-  name: string
-  children: any
-  disabled?: boolean
-  info?: string
-  label?: string
-  value?: any
-}
+type InputGroupPropType = React.PropsWithChildren<
+  {
+    name: string
+    disabled?: boolean
+    label?: string
+    value?: any
+  } & Partial<InputGroupInfoProp>
+>
 
 /**
  * InputGroup used to render the view of component.
@@ -143,14 +144,28 @@ interface InputGroupProp {
  * @param       {string} label
  * @constructor
  */
-export function InputGroup({ name, children, disabled, info, label, ...rest }: InputGroupProp) {
+export function InputGroup({ name, children, disabled, info, label, ...rest }: InputGroupPropType) {
   return (
     <InputGroupContainer disabled={disabled} {...rest}>
-      <label>{label}:</label>
-      <InputGroupContent>
-        {children}
-        {info && <InputGroupInfo info={info} />}
-      </InputGroupContent>
+      <Grid container spacing="10px">
+        <Grid item xs={3} display="flex" alignItems="center" justifyContent="end">
+          <InfoTooltip
+            className="tooltip"
+            title={label ?? name}
+            disableInteractive
+            placement="right-start"
+            followCursor
+          >
+            <label>{label}</label>
+          </InfoTooltip>
+        </Grid>
+        <Grid item xs={9}>
+          <InputGroupContent>
+            {children}
+            {info && <InputGroupInfo info={info} />}
+          </InputGroupContent>
+        </Grid>
+      </Grid>
     </InputGroupContainer>
   )
 }

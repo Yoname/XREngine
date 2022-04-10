@@ -1,7 +1,6 @@
 export interface ServerSetting {
   id: string
   hostname?: string
-  enabled: boolean
   mode?: string
   port?: string
   clientHost?: string
@@ -24,4 +23,9 @@ export interface ServerSetting {
 
 export interface HubInfo {
   endpoint?: string
+}
+
+export interface PatchServerSetting {
+  gaTrackingId?: string
+  gitPem?: string
 }

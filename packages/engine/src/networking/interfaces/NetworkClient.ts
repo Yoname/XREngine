@@ -1,12 +1,15 @@
+import type SocketIO from 'socket.io'
+
 import { NetworkId } from '@xrengine/common/src/interfaces/NetworkId'
 import { UserId } from '@xrengine/common/src/interfaces/UserId'
-import type SocketIO from 'socket.io'
+
 import type { AvatarProps } from './WorldState'
 
 export interface NetworkClient {
   userId: UserId
+  userIndex: number
   name: string
-  subscribedChatUpdates: string[]
+  subscribedChatUpdates?: string[]
   // The following properties are only present on the server
   socket?: SocketIO.Socket
   socketId?: string

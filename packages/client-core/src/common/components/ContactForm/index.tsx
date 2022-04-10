@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
 import emailjs from 'emailjs-com'
-import styles from './ContactForm.module.scss'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import Dialog from '@mui/material/Dialog'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
+
+import styles from './ContactForm.module.scss'
 
 export const ContactForm = () => {
   const { t } = useTranslation()
@@ -33,10 +35,10 @@ export const ContactForm = () => {
 
     emailjs
       .send(
-        process.env.VITE_EMAILJS_SERVICE_ID,
-        process.env.VITE_EMAILJS_TEMPLATE_ID,
+        globalThis.process.env['VITE_EMAILJS_SERVICE_ID']!,
+        globalThis.process.env['VITE_EMAILJS_TEMPLATE_ID']!,
         templateParams,
-        process.env.VITE_EMAILJS_USER_ID
+        globalThis.process.env['VITE_EMAILJS_USER_ID']
       )
       .then(
         (_) => {
@@ -133,7 +135,7 @@ export const ContactForm = () => {
       </div>
       <div className={styles.formControl}>
         <label className={styles.inputLabel}>{t('xrengineContact.lbl-project')}</label>
-        <textarea className={styles.emailInput} value={message} name="message" onChange={handleChange} />
+        <textarea rows={4} className={styles.descriptionInput} value={message} name="message" onChange={handleChange} />
         {error.message && <p className={styles.error}>{error.message}</p>}
       </div>
       <div className={styles.btnContainer}>

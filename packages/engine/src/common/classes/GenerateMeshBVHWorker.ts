@@ -1,8 +1,9 @@
 import { Box3, BufferAttribute, BufferGeometry, InterleavedBufferAttribute } from 'three'
 // @ts-ignore
 import { MeshBVH } from 'three-mesh-bvh'
-import { isClient } from '../functions/isClient'
 import Worker from 'web-worker'
+
+import { isClient } from '../functions/isClient'
 
 export class GenerateMeshBVHWorker {
   running: boolean
@@ -59,15 +60,6 @@ export class GenerateMeshBVHWorker {
 
           resolve(bvh)
         }
-      }
-
-      if (
-        (geometry.attributes.position as InterleavedBufferAttribute).isInterleavedBufferAttribute ||
-        (geometry.index && (geometry.index as any as InterleavedBufferAttribute).isInterleavedBufferAttribute)
-      ) {
-        throw new Error(
-          'GenerateMeshBVHWorker: InterleavedBufferAttribute are not supported for the geometry attributes.'
-        )
       }
 
       const index = geometry.index ? Uint32Array.from(geometry.index.array) : null

@@ -5,10 +5,9 @@
  * @param  {any} url
  * @return {string}     [contentType]
  */
-
 import { CommonKnownContentTypes } from './CommonKnownContentTypes'
 
-export function guessContentType(url): string {
+export function guessContentType(url: string): string {
   const extension = new URL(url).pathname.split('.').pop()!
   return CommonKnownContentTypes[extension]
 }

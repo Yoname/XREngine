@@ -1,6 +1,8 @@
+import { Types } from 'bitecs'
+
 import { NetworkId } from '@xrengine/common/src/interfaces/NetworkId'
 import { UserId } from '@xrengine/common/src/interfaces/UserId'
-import { Types } from 'bitecs'
+
 import { createMappedComponent } from '../../ecs/functions/ComponentFunctions'
 
 export type NetworkObjectComponentType = {
@@ -12,8 +14,15 @@ export type NetworkObjectComponentType = {
   prefab: string
   /** The parameters by which the prefab was created */
   parameters: any
+  /** The last tick when a packet containing state for this object was received */
+  lastTick: number
 }
 
-export const NetworkObjectComponent = createMappedComponent<NetworkObjectComponentType>('NetworkObjectComponent', {
+const SCHEMA = {
   networkId: Types.ui32
-})
+}
+
+export const NetworkObjectComponent = createMappedComponent<NetworkObjectComponentType, typeof SCHEMA>(
+  'NetworkObjectComponent',
+  SCHEMA
+)

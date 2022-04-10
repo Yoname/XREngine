@@ -1,30 +1,15 @@
 import { OrthographicCamera, PerspectiveCamera } from 'three'
+
+import { switchCameraMode } from '../../avatar/functions/switchCameraMode'
 import { FollowCameraComponent } from '../../camera/components/FollowCameraComponent'
 import { ProjectionType } from '../../camera/types/ProjectionType'
 import { Engine } from '../../ecs/classes/Engine'
 import { Entity } from '../../ecs/classes/Entity'
 import { getComponent } from '../../ecs/functions/ComponentFunctions'
-import { CameraMode } from '../../camera/types/CameraMode'
 import { useWorld } from '../../ecs/functions/SystemHooks'
-import { switchCameraMode } from '../../avatar/functions/switchCameraMode'
+import { CameraPropertiesComponentType } from '../components/CameraPropertiesComponent'
 
-type Props = {
-  projectionType: ProjectionType
-  fov: number
-  cameraNearClip: number
-  cameraFarClip: number
-  minCameraDistance: number
-  maxCameraDistance: number
-  startCameraDistance: number
-  cameraMode: CameraMode
-  cameraModeDefault: CameraMode
-  startInFreeLook: boolean
-  minPhi: number
-  maxPhi: number
-  startPhi: number
-}
-
-export const setCameraProperties = (entity: Entity, data: Props): void => {
+export const setCameraProperties = (entity: Entity, data: CameraPropertiesComponentType): void => {
   const cameraFollow = getComponent(entity, FollowCameraComponent)
   console.log('data')
 

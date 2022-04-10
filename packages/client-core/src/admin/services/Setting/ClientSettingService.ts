@@ -1,9 +1,12 @@
-import { client } from '../../../feathers'
+import { Paginated } from '@feathersjs/feathers'
+import { createState, useState } from '@speigg/hookstate'
+
+import { ClientSetting, PatchClientSetting } from '@xrengine/common/src/interfaces/ClientSetting'
+
 import { AlertService } from '../../../common/services/AlertService'
-import { useDispatch, store } from '../../../store'
-import { ClientSettingResult } from '@xrengine/common/src/interfaces/ClientSettingResult'
-import { createState, useState } from '@hookstate/core'
-import { ClientSetting } from '@xrengine/common/src/interfaces/ClientSetting'
+import { client } from '../../../feathers'
+import { store, useDispatch } from '../../../store'
+import waitForClientAuthenticated from '../../../util/wait-for-client-authenticated'
 
 //State
 const state = createState({
@@ -28,33 +31,33 @@ export const useClientSettingState = () => useState(state) as any as typeof stat
 
 //Service
 export const ClientSettingService = {
-  fetchedClientSettings: async (inDec?: 'increment' | 'decrement') => {
+  fetchClientSettings: async (inDec?: 'increment' | 'decrement') => {
     const dispatch = useDispatch()
     try {
-      const clientSettings = await client.service('client-setting').find()
+      await waitForClientAuthenticated()
+      const clientSettings = (await client.service('client-setting').find()) as Paginated<ClientSetting>
       dispatch(ClientSettingAction.fetchedClient(clientSettings))
     } catch (error) {
       console.error(error.message)
       AlertService.dispatchAlertError(error.message)
     }
   },
-  patchClientSetting: async (data: any, id: string) => {
+  patchClientSetting: async (data: PatchClientSetting, id: string) => {
     const dispatch = useDispatch()
-    {
-      try {
-        await client.service('client-setting').patch(id, data)
-        dispatch(ClientSettingAction.clientSettingPatched())
-      } catch (err) {
-        console.log(err)
-        AlertService.dispatchAlertError(err.message)
-      }
+
+    try {
+      await client.service('client-setting').patch(id, data)
+      dispatch(ClientSettingAction.clientSettingPatched())
+    } catch (err) {
+      console.log(err)
+      AlertService.dispatchAlertError(err.message)
     }
   }
 }
 
 //Action
 export const ClientSettingAction = {
-  fetchedClient: (clientSettingResult: ClientSettingResult) => {
+  fetchedClient: (clientSettingResult: Paginated<ClientSetting>) => {
     return {
       type: 'CLIENT_SETTING_DISPLAY' as const,
       clientSettingResult: clientSettingResult

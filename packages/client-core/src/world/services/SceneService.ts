@@ -1,34 +1,19 @@
-import { store } from '../../store'
-import { createState, useState } from '@hookstate/core'
+import { createState, useState } from '@speigg/hookstate'
 
-//State
-export interface PublicScenesState {
-  scenes: PublicScene[]
-  currentScene: PublicScene
-  error: string
-}
+import { SceneData } from '@xrengine/common/src/interfaces/SceneInterface'
 
-export interface PublicScene {
-  url: string
-  name: string
-  thumbnailUrl?: string
-}
+import { client } from '../../feathers'
+import { store, useDispatch } from '../../store'
 
 const state = createState({
-  scenes: [] as PublicScene[],
-  currentScene: null! as PublicScene,
-  error: ''
+  currentScene: null as SceneData | null
 })
 
 store.receptors.push((action: SceneActionType): any => {
   state.batch((s) => {
     switch (action.type) {
-      case 'SCENES_FETCHED_SUCCESS':
-        return s.merge({ scenes: action.scenes })
-      case 'SCENES_FETCHED_ERROR':
-        return s.merge({ error: action.message })
-      case 'SET_CURRENT_SCENE':
-        return s.merge({ currentScene: action.scene })
+      case 'SCENE_CHANGED':
+        return s.merge({ currentScene: action.sceneData })
     }
   }, action.type)
 })
@@ -37,27 +22,19 @@ export const accessSceneState = () => state
 
 export const useSceneState = () => useState(state) as any as typeof state
 
-//Service
-export const ScenesService = {}
+export const SceneService = {
+  fetchCurrentScene: async (projectName: string, sceneName: string) => {
+    const sceneData = await client.service('scene').get({ projectName, sceneName, metadataOnly: null }, {})
+    const dispatch = useDispatch()
+    dispatch(SceneAction.currentSceneChanged(sceneData.data))
+  }
+}
 
-//Action
 export const SceneAction = {
-  scenesFetchedSuccess: (scenes: PublicScene[]) => {
+  currentSceneChanged: (sceneData: SceneData | null) => {
     return {
-      type: 'SCENES_FETCHED_SUCCESS' as const,
-      scenes: scenes
-    }
-  },
-  scenesFetchedError: (err: string) => {
-    return {
-      type: 'SCENES_FETCHED_ERROR' as const,
-      message: err
-    }
-  },
-  setCurrentScene: (scene: PublicScene) => {
-    return {
-      type: 'SET_CURRENT_SCENE' as const,
-      scene: scene
+      type: 'SCENE_CHANGED' as const,
+      sceneData
     }
   }
 }

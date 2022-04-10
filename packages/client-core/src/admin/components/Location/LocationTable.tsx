@@ -1,58 +1,74 @@
-import React, { ReactElement, useEffect } from 'react'
-import { LocationService } from '../../services/LocationService'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
-import { useLocationStyles, useLocationStyle } from './styles'
-import { useAuthState } from '../../../user/services/AuthService'
-import { useLocationState } from '../../services/LocationService'
-import { useInstanceState } from '../../services/InstanceService'
-import { useUserState } from '../../services/UserService'
-import { SceneService } from '../../services/SceneService'
-import { UserService } from '../../services/UserService'
-import { InstanceService } from '../../services/InstanceService'
-import { useErrorState } from '../../../common/services/ErrorService'
-import { useDispatch } from '../../../store'
+import React, { ReactElement, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { locationColumns, LocationProps } from './variable'
-import Chip from '@mui/material/Chip'
+
+import { Location } from '@xrengine/common/src/interfaces/Location'
+
 import Avatar from '@mui/material/Avatar'
-import TablePagination from '@mui/material/TablePagination'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogTitle from '@mui/material/DialogTitle'
-import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+
+import { useErrorState } from '../../../common/services/ErrorService'
+import { useAuthState } from '../../../user/services/AuthService'
+import ConfirmModal from '../../common/ConfirmModal'
+import { useFetchAdminInstance } from '../../common/hooks/Instance.hooks'
+import { useFetchAdminScenes, useFetchLocation, useFetchLocationTypes } from '../../common/hooks/Location.hooks'
+import { useFetchUsersAsAdmin } from '../../common/hooks/User.hooks'
+import TableComponent from '../../common/Table'
+import { locationColumns, LocationProps } from '../../common/variables/location'
+import { InstanceService, useInstanceState } from '../../services/InstanceService'
+import { LOCATION_PAGE_LIMIT, LocationService, useLocationState } from '../../services/LocationService'
+import { SceneService } from '../../services/SceneService'
+import { UserService, useUserState } from '../../services/UserService'
+import styles from '../../styles/admin.module.scss'
 import ViewLocation from './ViewLocation'
-import { LOCATION_PAGE_LIMIT } from '../../services/LocationService'
 
 const LocationTable = (props: LocationProps) => {
-  const classes = useLocationStyles()
-  const classex = useLocationStyle()
+  const { search } = props
   const adminInstanceState = useInstanceState()
 
-  const [page, setPage] = React.useState(0)
-  const [rowsPerPage, setRowsPerPage] = React.useState(LOCATION_PAGE_LIMIT)
-  const [popConfirmOpen, setPopConfirmOpen] = React.useState(false)
-  const [locationId, setLocationId] = React.useState('')
-  const [viewModel, setViewModel] = React.useState(false)
-  const [locationAdmin, setLocationAdmin] = React.useState('')
-  const dispatch = useDispatch()
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(LOCATION_PAGE_LIMIT)
+  const [popConfirmOpen, setPopConfirmOpen] = useState(false)
+  const [locationId, setLocationId] = useState('')
+  const [locationName, setLocationName] = useState('')
+  const [fieldOrder, setFieldOrder] = useState('asc')
+  const [sortField, setSortField] = useState('name')
+  const [viewModal, setViewModal] = useState(false)
+  const [locationAdmin, setLocationAdmin] = useState<Location>()
   const authState = useAuthState()
   const user = authState.user
   const adminScopeReadErrMsg = useErrorState().readError.scopeErrorMessage
   const adminLocationState = useLocationState()
-  const adminLocations = adminLocationState
-  console.log(adminLocations)
+  const adminLocations = adminLocationState.locations
   const adminLocationCount = adminLocationState.total
+
+  // Call custom hooks
   const { t } = useTranslation()
   const adminUserState = useUserState()
+  useFetchLocation(user, adminLocationState, adminScopeReadErrMsg, search, LocationService, sortField, fieldOrder)
+  useFetchAdminScenes(user, SceneService)
+  useFetchLocationTypes(user, adminLocationState, LocationService)
+  useFetchUsersAsAdmin(user, adminUserState, UserService, '', 'name', fieldOrder)
+  useFetchAdminInstance(user, adminInstanceState, InstanceService)
+
   const handlePageChange = (event: unknown, newPage: number) => {
-    const incDec = page < newPage ? 'increment' : 'decrement'
-    LocationService.fetchAdminLocations(incDec)
+    //const incDec = page < newPage ? 'increment' : 'decrement'
+    LocationService.fetchAdminLocations(search, newPage, sortField, fieldOrder)
     setPage(newPage)
+  }
+
+  const handleCloseModal = () => {
+    setPopConfirmOpen(false)
+  }
+
+  useEffect(() => {
+    if (adminLocationState.fetched.value) {
+      LocationService.fetchAdminLocations(search, page, sortField, fieldOrder)
+    }
+  }, [fieldOrder])
+
+  const submitRemoveLocation = async () => {
+    await LocationService.removeLocation(locationId)
+    setPopConfirmOpen(false)
   }
 
   const handleRowsPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,31 +76,7 @@ const LocationTable = (props: LocationProps) => {
     setPage(0)
   }
 
-  useEffect(() => {
-    if (user?.id?.value !== null && adminLocationState.updateNeeded.value && !adminScopeReadErrMsg?.value) {
-      LocationService.fetchAdminLocations()
-    }
-    if (user?.id.value != null) {
-      // && adminSceneState.scenes.updateNeeded.value === true) {
-      SceneService.fetchAdminScenes('all')
-    }
-    if (user?.id.value != null && adminLocationState.updateNeeded.value === true) {
-      LocationService.fetchLocationTypes()
-    }
-    if (user?.id.value != null && adminUserState.updateNeeded.value === true) {
-      UserService.fetchUsersAsAdmin()
-    }
-    if (user?.id.value != null && adminInstanceState.updateNeeded.value === true) {
-      InstanceService.fetchAdminInstances()
-    }
-  }, [
-    authState.user?.id?.value,
-    // adminSceneState.scenes.updateNeeded.value,
-    adminInstanceState.updateNeeded.value,
-    adminLocationState.updateNeeded.value
-  ])
-
-  const openViewModel = (open: boolean, location: any) => (event: React.KeyboardEvent | React.MouseEvent) => {
+  const openViewModal = (open: boolean, location: Location) => (event: React.KeyboardEvent | React.MouseEvent) => {
     if (
       event.type === 'keydown' &&
       ((event as React.KeyboardEvent).key === 'Tab' || (event as React.KeyboardEvent).key === 'Shift')
@@ -92,15 +84,15 @@ const LocationTable = (props: LocationProps) => {
       return
     }
     setLocationAdmin(location)
-    setViewModel(open)
+    setViewModal(open)
   }
 
-  const closeViewModel = (open) => {
-    setViewModel(open)
+  const closeViewModal = (open) => {
+    setViewModal(open)
   }
 
   const createData = (
-    el: any,
+    el: Location,
     id: string,
     name: string,
     sceneId: string,
@@ -124,33 +116,34 @@ const LocationTable = (props: LocationProps) => {
       videoEnabled,
       action: (
         <>
-          <a href="#h" className={classex.actionStyle} onClick={openViewModel(true, el)}>
-            <span className={classex.spanWhite}>View</span>
+          <a href="#h" className={styles.actionStyle} onClick={openViewModal(true, el)}>
+            <span className={styles.spanWhite}>{t('admin:components.index.view')}</span>
           </a>
           <a
             href="#h"
-            className={classex.actionStyle}
+            className={styles.actionStyle}
             onClick={() => {
               setPopConfirmOpen(true)
               setLocationId(id)
+              setLocationName(name)
             }}
           >
-            {' '}
-            <span className={classex.spanDange}>Delete</span>{' '}
+            <span className={styles.spanDange}>{t('admin:components.index.delete')}</span>
           </a>
         </>
       )
     }
   }
 
-  const rows = adminLocations.locations.value.map((el) => {
+  const rows = adminLocations.value.map((el) => {
     return createData(
       el,
       el.id,
       el.name,
       el.sceneId,
-      el.maxUsersPerInstance,
+      el.maxUsersPerInstance.toString(),
       el.slugifiedName,
+      //@ts-ignore
       el.location_setting?.locationType,
       <div>
         {' '}
@@ -170,86 +163,43 @@ const LocationTable = (props: LocationProps) => {
           />
         )}{' '}
       </div>,
-      <div> {el.location_setting?.instanceMediaChatEnabled ? 'Yes' : 'No'} </div>,
-      <div> {el.location_setting?.videoEnabled ? 'Yes' : 'No'}</div>
+      <div>
+        {/**@ts-ignore*/}
+        {el.location_setting?.instanceMediaChatEnabled
+          ? t('admin:components.index.yes')
+          : t('admin:components.index.no')}{' '}
+      </div>,
+      <div>
+        {/**@ts-ignore*/}
+        {el.location_setting?.videoEnabled ? t('admin:components.index.yes') : t('admin:components.index.no')}
+      </div>
     )
   })
 
   return (
-    <div>
-      <React.Fragment>
-        <TableContainer className={classes.container}>
-          <Table stickyHeader aria-label="sticky table">
-            <TableHead>
-              <TableRow>
-                {locationColumns.map((column) => (
-                  <TableCell
-                    key={column.id}
-                    align={column.align}
-                    style={{ minWidth: column.minWidth }}
-                    className={classex.tableCellHeader}
-                  >
-                    {column.label}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((row, id) => {
-                return (
-                  <TableRow hover role="checkbox" tabIndex={-1} key={row.id}>
-                    {locationColumns.map((column) => {
-                      const value = row[column.id]
-                      return (
-                        <TableCell key={column.id} align={column.align} className={classex.tableCellBody}>
-                          {value}
-                        </TableCell>
-                      )
-                    })}
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination
-          rowsPerPageOptions={[12]}
-          component="div"
-          count={adminLocationCount.value}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handlePageChange}
-          onRowsPerPageChange={handleRowsPerPageChange}
-          className={classex.tableFooter}
-        />
-      </React.Fragment>
-      <Dialog
-        open={popConfirmOpen}
-        onClose={() => setPopConfirmOpen(false)}
-        aria-labelledby="alert-dialog-title"
-        aria-describedby="alert-dialog-description"
-        classes={{ paper: classes.paperDialog }}
-      >
-        <DialogTitle id="alert-dialog-title">Confirm location deletion</DialogTitle>
-        <DialogActions>
-          <Button onClick={() => setPopConfirmOpen(false)} className={classes.spanNone}>
-            Cancel
-          </Button>
-          <Button
-            className={classes.spanDange}
-            onClick={async () => {
-              await LocationService.removeLocation(locationId)
-              setPopConfirmOpen(false)
-            }}
-            autoFocus
-          >
-            Confirm
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <ViewLocation openView={viewModel} closeViewModel={closeViewModel} locationAdmin={locationAdmin} />
-    </div>
+    <React.Fragment>
+      <TableComponent
+        allowSort={false}
+        fieldOrder={fieldOrder}
+        setSortField={setSortField}
+        setFieldOrder={setFieldOrder}
+        rows={rows}
+        column={locationColumns}
+        page={page}
+        rowsPerPage={rowsPerPage}
+        count={adminLocationCount.value}
+        handlePageChange={handlePageChange}
+        handleRowsPerPageChange={handleRowsPerPageChange}
+      />
+      <ConfirmModal
+        popConfirmOpen={popConfirmOpen}
+        handleCloseModal={handleCloseModal}
+        submit={submitRemoveLocation}
+        name={locationName}
+        label={'location'}
+      />
+      <ViewLocation openView={viewModal} closeViewModal={closeViewModal} locationAdmin={locationAdmin} />
+    </React.Fragment>
   )
 }
 

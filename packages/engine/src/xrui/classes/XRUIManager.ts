@@ -1,4 +1,5 @@
 import { Object3D, Ray } from 'three'
+
 import { Engine } from '../../ecs/classes/Engine'
 
 export class XRUIManager {
@@ -6,9 +7,7 @@ export class XRUIManager {
 
   interactionRays = [] as Array<Ray | Object3D>
 
-  constructor(public ethereal: typeof import('ethereal')) {
-    this.layoutSystem = this.ethereal.createLayoutSystem(Engine.camera)
-  }
+  constructor(public WebLayerModule: typeof import('@etherealjs/web-layer/three')) {}
 
-  layoutSystem: import('ethereal').EtherealLayoutSystem
+  // layoutSystem: import('@etherealjs/web-layer').EtherealLayoutSystem
 }

@@ -1,7 +1,8 @@
 import { HookContext } from '@feathersjs/feathers'
+
 import logger from '../logger'
 
-export async function addFeedFire(context: any): Promise<HookContext> {
+export async function addFeedFire(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const viewer = await context.app.service('feed').get(result.dataValues.feedId, params)
@@ -19,7 +20,7 @@ export async function addFeedFire(context: any): Promise<HookContext> {
   }
 }
 
-export async function removeFeedFire(context: any): Promise<HookContext> {
+export async function removeFeedFire(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const notification = await context.app
@@ -34,7 +35,7 @@ export async function removeFeedFire(context: any): Promise<HookContext> {
   }
 }
 
-export async function addFeedBookmark(context: any): Promise<HookContext> {
+export async function addFeedBookmark(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const viewer = await context.app.service('feed').get(result.dataValues.feedId, params)
@@ -52,7 +53,7 @@ export async function addFeedBookmark(context: any): Promise<HookContext> {
   }
 }
 
-export async function removeFeedBookmark(context: any): Promise<HookContext> {
+export async function removeFeedBookmark(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const notification = await context.app
@@ -67,7 +68,7 @@ export async function removeFeedBookmark(context: any): Promise<HookContext> {
   }
 }
 
-export async function addFeedComment(context: any): Promise<HookContext> {
+export async function addFeedComment(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const viewer = await context.app.service('feed').get(result.feedId, params)
@@ -86,7 +87,7 @@ export async function addFeedComment(context: any): Promise<HookContext> {
   }
 }
 
-export async function addFeedCommentFire(context: any): Promise<HookContext> {
+export async function addFeedCommentFire(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const comment = await context.app.service('comments').get(result.dataValues.commentId, params)
@@ -106,7 +107,7 @@ export async function addFeedCommentFire(context: any): Promise<HookContext> {
   }
 }
 
-export async function removeFeedCommentFire(context: any): Promise<HookContext> {
+export async function removeFeedCommentFire(context: HookContext): Promise<HookContext> {
   try {
     const { result, params } = context
     const comment = await context.app.service('comments').get(result.commentId, params)
@@ -127,7 +128,7 @@ export async function removeFeedCommentFire(context: any): Promise<HookContext> 
   }
 }
 
-export async function addFollowCreator(context: any): Promise<HookContext> {
+export async function addFollowCreator(context: HookContext): Promise<HookContext> {
   try {
     const { result } = context
     await context.app.service('notifications').create({
@@ -143,7 +144,7 @@ export async function addFollowCreator(context: any): Promise<HookContext> {
   }
 }
 
-export async function addBlockCreator(context: any): Promise<HookContext> {
+export async function addBlockCreator(context: HookContext): Promise<HookContext> {
   try {
     const { result } = context
     await context.app.service('notifications').create({
@@ -159,7 +160,7 @@ export async function addBlockCreator(context: any): Promise<HookContext> {
   }
 }
 
-export async function removeFollowCreator(context: any): Promise<HookContext> {
+export async function removeFollowCreator(context: HookContext): Promise<HookContext> {
   try {
     const { result } = context
     await context.app.service('notifications').create({

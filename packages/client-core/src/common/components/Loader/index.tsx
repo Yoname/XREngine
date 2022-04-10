@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react'
-import { GeneralStateList } from '../../services/AppService'
-import { useAppState } from '../../services/AppService'
 import { useTranslation } from 'react-i18next'
-import styles from './Loader.module.scss'
-import LottieLoader from './LottieLoader'
+
 import { useEngineState } from '@xrengine/engine/src/ecs/classes/EngineService'
 
+import { GeneralStateList } from '../../services/AppService'
+import { useAppState } from '../../services/AppService'
+import styles from './Loader.module.scss'
+import LottieLoader from './LottieLoader'
+
 interface Props {
-  Loader?: any
+  //Loader?: any
 }
 
 const LoadingScreen = (props: Props) => {
-  const { Loader } = props
+  //const { Loader } = props
   const onBoardingStep = useAppState().onBoardingStep
   const [showProgressBar, setShowProgressBar] = useState(true)
   const [loadingText, setLoadingText] = useState('')
@@ -54,11 +56,9 @@ const LoadingScreen = (props: Props) => {
   return (
     <>
       <section className={styles.overlay}>
-        <div className={styles.imageOverlay}></div>
-        {Loader ? <Loader /> : <LottieLoader />}
-        <section className={styles.linearProgressContainer}>
+        {/* <section className={styles.linearProgressContainer}>
           <span className={styles.loadingProgressInfo}>{loadingText}</span>
-        </section>
+        </section> */}
       </section>
     </>
   )

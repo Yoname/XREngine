@@ -1,14 +1,15 @@
-import { store, useDispatch } from '../../store'
-import { client } from '../../feathers'
-import { AlertService } from '../../common/services/AlertService'
-import { Config } from '@xrengine/common/src/config'
-import { UserAction } from '../../user/services/UserService'
-import { accessAuthState } from '../../user/services/AuthService'
+import { Paginated } from '@feathersjs/feathers'
+import { createState, none, useState } from '@speigg/hookstate'
+import _ from 'lodash'
+
 import { User } from '@xrengine/common/src/interfaces/User'
 import { UserRelationship } from '@xrengine/common/src/interfaces/UserRelationship'
-import { FriendResult } from '@xrengine/common/src/interfaces/FriendResult'
-import { createState, useState, none } from '@hookstate/core'
-import _ from 'lodash'
+
+import { AlertService } from '../../common/services/AlertService'
+import { client } from '../../feathers'
+import { store, useDispatch } from '../../store'
+import { accessAuthState } from '../../user/services/AuthService'
+import { UserAction } from '../../user/services/UserService'
 
 //State
 const state = createState({
@@ -109,22 +110,21 @@ export const FriendService = {
 
   getFriends: async (skip: number = 0, limit: number = 10) => {
     const dispatch = useDispatch()
-    {
-      dispatch(FriendAction.fetchingFriends())
-      try {
-        const friendState = accessFriendState()
-        const friendResult = await client.service('user').find({
-          query: {
-            action: 'friends',
-            $limit: limit != null ? limit : friendState.friends.limit.value,
-            $skip: skip != null ? skip : friendState.friends.skip.value
-          }
-        })
-        dispatch(FriendAction.loadedFriends(friendResult))
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-        dispatch(FriendAction.loadedFriends({ data: [], limit: 0, skip: 0, total: 0 }))
-      }
+
+    dispatch(FriendAction.fetchingFriends())
+    try {
+      const friendState = accessFriendState()
+      const friendResult = (await client.service('user').find({
+        query: {
+          action: 'friends',
+          $limit: limit != null ? limit : friendState.friends.limit.value,
+          $skip: skip != null ? skip : friendState.friends.skip.value
+        }
+      })) as Paginated<User>
+      dispatch(FriendAction.loadedFriends(friendResult))
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
+      dispatch(FriendAction.loadedFriends({ data: [], limit: 0, skip: 0, total: 0 }))
     }
   },
 
@@ -146,12 +146,11 @@ export const FriendService = {
   //
   removeFriend: async (relatedUserId: string) => {
     const dispatch = useDispatch()
-    {
-      try {
-        await client.service('user-relationship').remove(relatedUserId)
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+
+    try {
+      await client.service('user-relationship').remove(relatedUserId)
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
   //
@@ -194,7 +193,7 @@ export const FriendService = {
     return FriendService.removeFriend(relatedUserId)
   }
 }
-if (!Config.publicRuntimeConfig.offlineMode) {
+if (globalThis.process.env['VITE_OFFLINE_MODE'] !== 'true') {
   client.service('user-relationship').on('created', (params) => {
     if (params.userRelationship.userRelationshipType === 'friend') {
       store.dispatch(FriendAction.createdFriend(params.userRelationship))
@@ -234,7 +233,7 @@ if (!Config.publicRuntimeConfig.offlineMode) {
 
 //Action
 export const FriendAction = {
-  loadedFriends: (friendResult: FriendResult) => {
+  loadedFriends: (friendResult: Paginated<User>) => {
     return {
       type: 'LOADED_FRIENDS' as const,
       friends: friendResult.data,

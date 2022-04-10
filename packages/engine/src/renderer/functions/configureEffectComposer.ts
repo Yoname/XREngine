@@ -1,31 +1,34 @@
 import {
   BlendFunction,
+  DepthDownsamplingPass,
   EffectComposer,
   EffectPass,
-  RenderPass,
-  TextureEffect,
   NormalPass,
-  DepthDownsamplingPass
+  RenderPass,
+  TextureEffect
 } from 'postprocessing'
-import { NearestFilter, RGBFormat, WebGLRenderTarget } from 'three'
+import { NearestFilter, RGBAFormat, WebGLRenderTarget } from 'three'
+
 import { Engine } from '../../ecs/classes/Engine'
-import { EffectMap, Effects } from '../../scene/classes/PostProcessing'
-import { EngineRenderer } from '../WebGLRendererSystem'
+import { getAllComponentsOfType } from '../../ecs/functions/ComponentFunctions'
+import { PostprocessingComponent } from '../../scene/components/PostprocessingComponent'
+import { EffectMap, Effects, OutlineEffectProps } from '../../scene/constants/PostProcessing'
 
-export const configureEffectComposer = (postprocessingComponent: any, remove?: boolean): void => {
-  if (remove) {
-    Engine.effectComposer = null!
-    return
-  }
+export const configureEffectComposer = (remove?: boolean): void => {
+  Engine.effectComposer.removeAllPasses()
 
-  if (!Engine.effectComposer) Engine.effectComposer = new EffectComposer(Engine.renderer)
-  else Engine.effectComposer.removeAllPasses()
-
+  // we always want to have at least the render pass enabled
   const renderPass = new RenderPass(Engine.scene, Engine.camera)
   Engine.effectComposer.addPass(renderPass)
 
-  if (!postprocessingComponent) return
-  EngineRenderer.instance.postProcessingConfig = postprocessingComponent
+  if (remove) {
+    return
+  }
+
+  const comps = getAllComponentsOfType(PostprocessingComponent)
+
+  if (!comps.length) return
+  const postProcessing = comps[0]
 
   const effects: any[] = []
   const effectKeys = EffectMap.keys()
@@ -34,7 +37,7 @@ export const configureEffectComposer = (postprocessingComponent: any, remove?: b
     renderTarget: new WebGLRenderTarget(1, 1, {
       minFilter: NearestFilter,
       magFilter: NearestFilter,
-      format: RGBFormat,
+      format: RGBAFormat,
       stencilBuffer: false
     })
   })
@@ -45,7 +48,7 @@ export const configureEffectComposer = (postprocessingComponent: any, remove?: b
   })
 
   for (let key of effectKeys) {
-    const effect = postprocessingComponent[key]
+    const effect = postProcessing.options[key]
 
     if (!effect || !effect.isActive) continue
     const effectClass = EffectMap.get(key)?.EffectClass
@@ -64,7 +67,11 @@ export const configureEffectComposer = (postprocessingComponent: any, remove?: b
       Engine.effectComposer[key] = eff
       effects.push(eff)
     } else if (key === Effects.OutlineEffect) {
-      const eff = new effectClass(Engine.scene, Engine.camera, effect)
+      let outlineEffect = effect as OutlineEffectProps
+      if (Engine.isEditor) {
+        outlineEffect = { ...outlineEffect, hiddenEdgeColor: 0x22090a }
+      }
+      const eff = new effectClass(Engine.scene, Engine.camera, outlineEffect)
       Engine.effectComposer[key] = eff
       effects.push(eff)
     } else {

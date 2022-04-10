@@ -1,71 +1,58 @@
-import { useHistory, withRouter } from 'react-router-dom'
-import Inventory2Icon from '@mui/icons-material/Inventory2'
-import AccountTreeIcon from '@mui/icons-material/AccountTree'
-import TuneIcon from '@mui/icons-material/Tune'
-import { DockLayout, DockMode, LayoutData } from 'rc-dock'
+import { DockLayout, DockMode, LayoutData, TabData } from 'rc-dock'
 import 'rc-dock/dist/rc-dock.css'
 import React, { useEffect, useRef, useState } from 'react'
-import { DndProvider } from 'react-dnd'
-import { HTML5Backend } from 'react-dnd-html5-backend'
 import { useTranslation } from 'react-i18next'
-import Modal from 'react-modal'
+import { useHistory } from 'react-router-dom'
 import styled from 'styled-components'
-import { getScene, saveScene } from '../functions/sceneFunctions'
-import AssetsPanel from './assets/AssetsPanel'
+
+import { useDispatch } from '@xrengine/client-core/src/store'
+import { SceneJson } from '@xrengine/common/src/interfaces/SceneInterface'
+import { useHookedEffect } from '@xrengine/common/src/utils/useHookedEffect'
+import { getGLTFLoader } from '@xrengine/engine/src/assets/classes/AssetLoader'
+import { GLTFExporter } from '@xrengine/engine/src/assets/exporters/gltf/GLTFExporter'
+import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
+import { useEngineState } from '@xrengine/engine/src/ecs/classes/EngineService'
+import { useWorld } from '@xrengine/engine/src/ecs/functions/SystemHooks'
+import { gltfToSceneJson, sceneFromGLTF, sceneToGLTF } from '@xrengine/engine/src/scene/functions/GLTFConversion'
+import { serializeWorld } from '@xrengine/engine/src/scene/functions/serializeWorld'
+
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import Inventory2Icon from '@mui/icons-material/Inventory2'
+import TuneIcon from '@mui/icons-material/Tune'
+import Dialog from '@mui/material/Dialog'
+
+import { disposeProject, loadProjectScene, runPreprojectLoadTasks, saveProject } from '../functions/projectFunctions'
+import { createNewScene, getScene, saveScene } from '../functions/sceneFunctions'
+import {
+  DefaultExportOptions,
+  DefaultExportOptionsType, //exportScene,
+  initializeRenderer
+} from '../functions/sceneRenderFunctions'
+import { takeScreenshot } from '../functions/takeScreenshot'
+import { uploadBakeToServer } from '../functions/uploadCubemapBake'
+import { cmdOrCtrlString } from '../functions/utils'
+import { useEditorErrorState } from '../services/EditorErrorServices'
+import { EditorAction, useEditorState } from '../services/EditorServices'
+import AssetDropZone from './assets/AssetDropZone'
+import ProjectBrowserPanel from './assets/ProjectBrowserPanel'
+import ScenesPanel from './assets/ScenesPanel'
+import { ControlText } from './controlText/ControlText'
 import ConfirmDialog from './dialogs/ConfirmDialog'
 import ErrorDialog from './dialogs/ErrorDialog'
 import ExportProjectDialog from './dialogs/ExportProjectDialog'
 import { ProgressDialog } from './dialogs/ProgressDialog'
+import SaveNewProjectDialog from './dialogs/SaveNewProjectDialog'
+import { DndWrapper } from './dnd/DndWrapper'
 import DragLayer from './dnd/DragLayer'
+import ElementList from './element/ElementList'
 import HierarchyPanelContainer from './hierarchy/HierarchyPanelContainer'
+import { DialogContext } from './hooks/useDialog'
 import { PanelDragContainer, PanelIcon, PanelTitle } from './layout/Panel'
 import PropertiesPanelContainer from './properties/PropertiesPanelContainer'
+import { AppContext } from './Search/context'
+import Search from './Search/Search'
+import * as styles from './styles.module.scss'
 import ToolBar from './toolbar/ToolBar'
-import ViewportPanelContainer from './viewport/ViewportPanelContainer'
-import ProjectBrowserPanel from './assets/ProjectBrowserPanel'
-import { cmdOrCtrlString } from '../functions/utils'
-import { CommandManager } from '../managers/CommandManager'
-import EditorEvents from '../constants/EditorEvents'
-import { SceneManager } from '../managers/SceneManager'
-import { registerPredefinedNodes } from '../managers/NodeManager'
-import { CacheManager } from '../managers/CacheManager'
-import { ProjectManager } from '../managers/ProjectManager'
-import ScenesPanel from './assets/ScenesPanel'
-import SaveNewProjectDialog from './dialogs/SaveNewProjectDialog'
-import { DialogContext } from './hooks/useDialog'
-import { saveProject } from '../functions/projectFunctions'
-import { EditorAction, useEditorState } from '../services/EditorServices'
-import { useDispatch } from '@xrengine/client-core/src/store'
-import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
-
-/**
- * StyledEditorContainer component is used as root element of new project page.
- * On this page we have an editor to create a new or modifing an existing project.
- *
- * @author Robert Long
- * @type {Styled component}
- */
-const StyledEditorContainer = (styled as any).div`
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  position: fixed;
-`
-
-/**
- *Styled component used as workspace container.
- *
- * @author Robert Long
- * @type {type}
- */
-const WorkspaceContainer = (styled as any).div`
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-  margin: 0px;
-`
 
 /**
  *Styled component used as dock container.
@@ -78,7 +65,6 @@ export const DockContainer = (styled as any).div`
   .dock-panel {
     background: transparent;
     pointer-events: auto;
-    opacity: 0.8;
     border: none;
   }
   .dock-panel:first-child {
@@ -86,31 +72,37 @@ export const DockContainer = (styled as any).div`
     z-index: 99;
   }
   .dock-panel[data-dockid="+5"] {
-    visibility: hidden;
     pointer-events: none;
   }
+  .dock-panel[data-dockid="+5"] .dock-bar { display: none; }
+  .dock-panel[data-dockid="+5"] .dock { background: transparent; }
   .dock-divider {
     pointer-events: auto;
     background:rgba(1,1,1,${(props) => props.dividerAlpha});
   }
   .dock {
     border-radius: 4px;
-    background: #282C31;
+    background: var(--dock);
   }
   .dock-top .dock-bar {
     font-size: 12px;
     border-bottom: 1px solid rgba(0,0,0,0.2);
-    background: #282C31;
+    background: transparent;
   }
   .dock-tab {
-    background: #282C31; 
+    background: transparent;
     border-bottom: none;
   }
   .dock-tab:hover, .dock-tab-active, .dock-tab-active:hover {
-    color: #ffffff; 
+    border-bottom: 1px solid #ddd;
+  }
+  .dock-tab:hover div, .dock-tab:hover svg { color: var(--text); }
+  .dock-tab > div { padding: 2px 12px; }
+  .dock-tab-active {
+    color: var(--purpleColor);
   }
   .dock-ink-bar {
-    background-color: #ffffff; 
+    background-color: var(--purpleColor);
   }
 `
 /**
@@ -120,43 +112,37 @@ DockContainer.defaultProps = {
   dividerAlpha: 0
 }
 
-type EditorContainerProps = {
-  projectName: string
-  sceneName: string
-}
-
 /**
  * EditorContainer class used for creating container for Editor
  *
  *  @author Robert Long
  */
-const EditorContainer = (props) => {
-  const projectName = useEditorState().projectName.value
-  const sceneName = useEditorState().sceneName.value
+const EditorContainer = () => {
+  const editorState = useEditorState()
+  const projectName = editorState.projectName
+  const sceneName = editorState.sceneName
+  const modified = editorState.sceneModified
+  const sceneLoaded = useEngineState().sceneLoaded
+
+  const errorState = useEditorErrorState()
+  const editorError = errorState.error
+
+  const [searchElement, setSearchElement] = React.useState('')
+  const [searchHierarchy, setSearchHierarchy] = React.useState('')
 
   const { t } = useTranslation()
   const [editorReady, setEditorReady] = useState(false)
-  const [DialogComponent, setDialogComponent] = useState(null)
-  const [modified, setModified] = useState(false)
-  const [sceneLoaded, setSceneLoaded] = useState(false)
+  const [DialogComponent, setDialogComponent] = useState<JSX.Element | null>(null)
   const [toggleRefetchScenes, setToggleRefetchScenes] = useState(false)
   const dispatch = useDispatch()
   const history = useHistory()
-  const dockPanelRef = useRef()
+  const dockPanelRef = useRef<DockLayout>(null)
 
-  const initializeEditor = async () => {
-    await Promise.all([ProjectManager.instance.init()])
-  }
-
-  const importScene = async (projectFile) => {
+  const importScene = async (sceneFile: SceneJson) => {
     setDialogComponent(<ProgressDialog title={t('editor:loading')} message={t('editor:loadingMsg')} />)
-    dispatch(EditorAction.sceneLoaded(null))
-    setSceneLoaded(false)
     try {
-      await ProjectManager.instance.loadProject(projectFile)
-      setSceneLoaded(true)
-      SceneManager.instance.sceneModified = true
-      updateModifiedState()
+      await loadProjectScene(sceneFile)
+      dispatch(EditorAction.sceneModified(true))
       setDialogComponent(null)
     } catch (error) {
       console.error(error)
@@ -170,42 +156,35 @@ const EditorContainer = (props) => {
     }
   }
 
-  useEffect(() => {
-    const locationSceneName = props?.match?.params?.sceneName
-    const locationProjectName = props?.match?.params?.projectName
-
-    if (projectName !== locationProjectName) {
-      locationProjectName && dispatch(EditorAction.projectLoaded(locationProjectName))
-    }
-
-    if (sceneName !== locationSceneName) {
-      locationSceneName && dispatch(EditorAction.sceneLoaded(locationSceneName))
-    }
-
-    if (!projectName && !locationProjectName && !sceneName) {
-      dispatch(EditorAction.projectLoaded(projectName))
-      history.push(`/editor/${projectName}`)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (editorReady && !sceneLoaded && sceneName) {
-      console.log(`Loading scene ${sceneName} via given url`)
-      loadScene(sceneName)
-    }
-  }, [editorReady, sceneLoaded])
-
-  const reRouteToLoadScene = (sceneName) => {
-    projectName && sceneName && history.push(`/editor/${projectName}/${sceneName}`)
+  const handleInputChangeHierarchy = (searchInput) => {
+    setSearchHierarchy(searchInput)
+  }
+  const handleInputChangeElement = (searchInput) => {
+    setSearchElement(searchInput)
   }
 
-  const loadScene = async (sceneName) => {
+  useHookedEffect(() => {
+    if (sceneName.value && editorReady) {
+      console.log(`Loading scene ${sceneName.value} via given url`)
+      loadScene(sceneName.value)
+    }
+  }, [editorReady, sceneName])
+
+  const reRouteToLoadScene = async (newSceneName: string) => {
+    if (sceneName.value === newSceneName) return
+    if (!projectName.value || !newSceneName) return
+    history.push(`/editor/${projectName.value}/${newSceneName}`)
+  }
+
+  const loadScene = async (sceneName: string) => {
     setDialogComponent(<ProgressDialog title={t('editor:loading')} message={t('editor:loadingMsg')} />)
-    dispatch(EditorAction.sceneLoaded(null))
-    setSceneLoaded(false)
     try {
-      const project = await getScene(projectName, sceneName, false)
-      await ProjectManager.instance.loadProject(project.scene)
+      if (!projectName.value) return
+      const project = await getScene(projectName.value, sceneName, false)
+
+      if (!project.scene) return
+      await loadProjectScene(project.scene)
+
       setDialogComponent(null)
     } catch (error) {
       console.error(error)
@@ -218,18 +197,18 @@ const EditorContainer = (props) => {
         />
       )
     }
-    dispatch(EditorAction.sceneLoaded(sceneName))
-    setSceneLoaded(true)
   }
 
-  const newScene = async () => {
+  const onNewScene = async () => {
+    if (!projectName.value) return
+
     setDialogComponent(<ProgressDialog title={t('editor:loading')} message={t('editor:loadingMsg')} />)
-    dispatch(EditorAction.sceneLoaded(null))
-    setSceneLoaded(false)
+
     try {
-      // TODO: replace with better template functionality
-      const project = await getScene('default-project', 'empty', false)
-      await ProjectManager.instance.loadProject(project.scene)
+      const sceneData = await createNewScene(projectName.value)
+      if (!sceneData) return
+
+      reRouteToLoadScene(sceneData.sceneName)
       setDialogComponent(null)
     } catch (error) {
       console.error(error)
@@ -242,37 +221,6 @@ const EditorContainer = (props) => {
         />
       )
     }
-    dispatch(EditorAction.sceneLoaded(sceneName))
-    SceneManager.instance.sceneModified = true
-    updateModifiedState()
-    setSceneLoaded(true)
-  }
-
-  const updateModifiedState = (then?) => {
-    const nextModified = SceneManager.instance.sceneModified
-
-    if (nextModified !== modified) {
-      setModified(nextModified)
-      then && then()
-    } else if (then) {
-      then()
-    }
-  }
-
-  const setDebuginfo = () => {
-    const gl = Engine.renderer.getContext()
-
-    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info')
-
-    let webglVendor = 'Unknown'
-    let webglRenderer = 'Unknown'
-
-    if (debugInfo) {
-      webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
-      webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
-    }
-
-    CommandManager.instance.removeListener(EditorEvents.RENDERER_INITIALIZED.toString(), setDebuginfo)
   }
 
   /**
@@ -297,41 +245,42 @@ const EditorContainer = (props) => {
     )
   }
 
-  const onProjectLoaded = () => {
-    updateModifiedState()
-  }
-
   const onCloseProject = () => {
     history.push('/editor')
-    dispatch(EditorAction.projectLoaded(null))
   }
 
   const onSaveAs = async () => {
+    // Do not save scene if scene is not loaded or some error occured while loading the scene to prevent data lose
+    if (!Engine.sceneLoaded) {
+      setDialogComponent(<ErrorDialog title={t('editor:savingError')} message={t('editor:savingSceneErrorMsg')} />)
+      return
+    }
+
     const abortController = new AbortController()
     try {
       let saveProjectFlag = true
-      if (sceneName || modified) {
-        const blob = await SceneManager.instance.takeScreenshot(512, 320)
+      if (sceneName.value || modified.value) {
+        const blob = await takeScreenshot(512, 320)
         const result: { name: string } = (await new Promise((resolve) => {
           setDialogComponent(
             <SaveNewProjectDialog
-              thumbnailUrl={URL.createObjectURL(blob)}
+              thumbnailUrl={URL.createObjectURL(blob!)}
               initialName={Engine.scene.name}
               onConfirm={resolve}
               onCancel={resolve}
             />
           )
         })) as any
-        if (result) {
-          await saveScene(projectName, result.name, blob, abortController.signal)
-          SceneManager.instance.sceneModified = false
+        if (result && projectName.value) {
+          const cubemapUrl = await uploadBakeToServer(useWorld().entityTree.rootNode.entity)
+          await saveScene(projectName.value, result.name, blob, abortController.signal)
+          dispatch(EditorAction.sceneModified(false))
         } else {
           saveProjectFlag = false
         }
       }
-      if (saveProjectFlag) {
-        await saveProject(projectName)
-        updateModifiedState()
+      if (saveProjectFlag && projectName.value) {
+        await saveProject(projectName.value)
       }
       setDialogComponent(null)
     } catch (error) {
@@ -342,13 +291,13 @@ const EditorContainer = (props) => {
     }
     setToggleRefetchScenes(!toggleRefetchScenes)
   }
-
+  /*
   const onExportProject = async () => {
     if (!sceneName) return
-    const options = await new Promise((resolve) => {
+    const options = await new Promise<DefaultExportOptionsType>((resolve) => {
       setDialogComponent(
         <ExportProjectDialog
-          defaultOptions={Object.assign({}, SceneManager.DefaultExportOptions)}
+          defaultOptions={Object.assign({}, DefaultExportOptions)}
           onConfirm={resolve}
           onCancel={resolve}
         />
@@ -372,12 +321,12 @@ const EditorContainer = (props) => {
     )
 
     try {
-      const { glbBlob } = await SceneManager.instance.exportScene(options)
+      const { glbBlob } = await exportScene(options)
 
       setDialogComponent(null)
 
       const el = document.createElement('a')
-      el.download = Engine.scene.name + '.glb'
+      el.download = Engine.scene.name + '.gltf'
       el.href = URL.createObjectURL(glbBlob)
       document.body.appendChild(el)
       el.click()
@@ -398,7 +347,7 @@ const EditorContainer = (props) => {
         />
       )
     }
-  }
+  }*/
 
   const onImportScene = async () => {
     const confirm = await new Promise((resolve) => {
@@ -416,14 +365,20 @@ const EditorContainer = (props) => {
     if (!confirm) return
     const el = document.createElement('input')
     el.type = 'file'
-    el.accept = '.world'
+    el.accept = '.gltf'
     el.style.display = 'none'
     el.onchange = () => {
-      if (el.files.length > 0) {
+      if (el.files && el.files.length > 0) {
         const fileReader: any = new FileReader()
         fileReader.onload = () => {
-          const json = JSON.parse((fileReader as any).result)
-          importScene(json)
+          /*const loader = getGLTFLoader()
+          
+          loader.parse(fileReader.result, '', (gltf) => {
+            const json = gltfToSceneJson(gltf)
+            importScene(json)
+          })*/
+          const json = JSON.parse(fileReader.result)
+          importScene(gltfToSceneJson(json))
         }
         fileReader.readAsText(el.files[0])
       }
@@ -432,12 +387,15 @@ const EditorContainer = (props) => {
   }
 
   const onExportScene = async () => {
-    const projectFile = await (Engine.scene as any).serialize(sceneName)
+    /*
+    const projectFile = serializeWorld()*/
+    const projectFile = await sceneToGLTF(Engine.scene as any)
+
     const projectJson = JSON.stringify(projectFile)
     const projectBlob = new Blob([projectJson])
     const el = document.createElement('a')
     const fileName = Engine.scene.name.toLowerCase().replace(/\s+/g, '-')
-    el.download = fileName + '.world'
+    el.download = fileName + '.gltf'
     el.href = URL.createObjectURL(projectBlob)
     document.body.appendChild(el)
     el.click()
@@ -445,8 +403,14 @@ const EditorContainer = (props) => {
   }
 
   const onSaveScene = async () => {
-    if (!sceneName) {
-      if (modified) {
+    // Do not save scene if scene is not loaded or some error occured while loading the scene to prevent data lose
+    if (!Engine.sceneLoaded) {
+      setDialogComponent(<ErrorDialog title={t('editor:savingError')} message={t('editor:savingSceneErrorMsg')} />)
+      return
+    }
+
+    if (!sceneName.value) {
+      if (modified.value) {
         onSaveAs()
       }
       return
@@ -468,13 +432,17 @@ const EditorContainer = (props) => {
     // Wait for 5ms so that the ProgressDialog shows up.
     await new Promise((resolve) => setTimeout(resolve, 5))
 
-    const blob = await SceneManager.instance.takeScreenshot(512, 320)
+    const blob = await takeScreenshot(512, 320)
 
     try {
-      await saveScene(projectName, sceneName, blob, abortController.signal)
-      await saveProject(projectName)
-      SceneManager.instance.sceneModified = false
-      updateModifiedState()
+      if (projectName.value) {
+        const cubemapUrl = await uploadBakeToServer(useWorld().entityTree.rootNode.entity)
+        await saveScene(projectName.value, sceneName.value, blob, abortController.signal)
+        await saveProject(projectName.value)
+      }
+
+      dispatch(EditorAction.sceneModified(false))
+
       setDialogComponent(null)
     } catch (error) {
       console.error(error)
@@ -487,7 +455,6 @@ const EditorContainer = (props) => {
   }
 
   useEffect(() => {
-    console.log('toggleRefetchScenes')
     dockPanelRef.current &&
       dockPanelRef.current.updateTab('scenePanel', {
         id: 'scenePanel',
@@ -498,47 +465,56 @@ const EditorContainer = (props) => {
           </PanelDragContainer>
         ),
         content: (
-          <ScenesPanel
-            newScene={newScene}
-            toggleRefetchScenes={toggleRefetchScenes}
-            projectName={projectName}
-            loadScene={reRouteToLoadScene}
-          />
+          <ScenesPanel newScene={onNewScene} toggleRefetchScenes={toggleRefetchScenes} loadScene={reRouteToLoadScene} />
         )
       })
   }, [toggleRefetchScenes])
 
   useEffect(() => {
-    CacheManager.init()
+    if (sceneLoaded.value && dockPanelRef.current) {
+      dockPanelRef.current.updateTab('viewPanel', {
+        id: 'viewPanel',
+        title: 'Viewport',
+        content: <div />
+      })
 
-    registerPredefinedNodes()
+      dockPanelRef.current.updateTab('filesPanel', dockPanelRef.current.find('filesPanel') as TabData, true)
+    }
+  }, [sceneLoaded])
 
-    initializeEditor().then(() => {
+  useEffect(() => {
+    runPreprojectLoadTasks().then(() => {
       setEditorReady(true)
-      CommandManager.instance.addListener(EditorEvents.RENDERER_INITIALIZED.toString(), setDebuginfo)
-      CommandManager.instance.addListener(EditorEvents.PROJECT_LOADED.toString(), onProjectLoaded)
-      CommandManager.instance.addListener(EditorEvents.ERROR.toString(), onEditorError)
-      CommandManager.instance.addListener(EditorEvents.SAVE_PROJECT.toString(), onSaveScene)
     })
   }, [])
 
+  useHookedEffect(() => {
+    if (editorError) {
+      onEditorError(editorError.value)
+    }
+  }, [editorError])
+
   useEffect(() => {
     return () => {
-      CommandManager.instance.removeListener(EditorEvents.SAVE_PROJECT.toString(), onSaveScene)
-      CommandManager.instance.removeListener(EditorEvents.ERROR.toString(), onEditorError)
-      CommandManager.instance.removeListener(EditorEvents.PROJECT_LOADED.toString(), onProjectLoaded)
-      ProjectManager.instance.dispose()
+      setEditorReady(false)
+      disposeProject()
     }
   }, [])
+
+  useEffect(() => {
+    if (editorState.projectLoaded.value === true) {
+      initializeRenderer()
+    }
+  }, [editorState.projectLoaded.value])
 
   const generateToolbarMenu = () => {
     return [
       {
-        name: t('editor:menubar.newProject'),
-        action: newScene
+        name: t('editor:menubar.newScene'),
+        action: onNewScene
       },
       {
-        name: t('editor:menubar.saveProject'),
+        name: t('editor:menubar.saveScene'),
         hotkey: `${cmdOrCtrlString}+s`,
         action: onSaveScene
       },
@@ -551,11 +527,11 @@ const EditorContainer = (props) => {
       //   action: onExportProject
       // },
       {
-        name: t('editor:menubar.importProject'),
+        name: t('editor:menubar.importScene'),
         action: onImportScene
       },
       {
-        name: t('editor:menubar.exportProject'),
+        name: t('editor:menubar.exportScene'),
         action: onExportScene
       },
       {
@@ -588,8 +564,7 @@ const EditorContainer = (props) => {
                   ),
                   content: (
                     <ScenesPanel
-                      newScene={newScene}
-                      projectName={projectName}
+                      newScene={onNewScene}
                       toggleRefetchScenes={toggleRefetchScenes}
                       loadScene={reRouteToLoadScene}
                     />
@@ -615,7 +590,18 @@ const EditorContainer = (props) => {
           children: [
             {
               id: '+5',
-              tabs: [{ id: 'viewPanel', title: 'Viewport', content: <div /> }],
+              tabs: [
+                {
+                  id: 'viewPanel',
+                  title: 'Viewport',
+                  content: (
+                    <div className={styles.bgImageBlock}>
+                      <img src="/static/xrengine.png" />
+                      <h2>{t('editor:selectSceneMsg')}</h2>
+                    </div>
+                  )
+                }
+              ],
               size: 1
             }
           ]
@@ -632,6 +618,7 @@ const EditorContainer = (props) => {
                     <PanelDragContainer>
                       <PanelIcon as={AccountTreeIcon} size={12} />
                       <PanelTitle>Hierarchy</PanelTitle>
+                      <Search elementsName="hierarchy" handleInputChange={handleInputChangeHierarchy} />
                     </PanelDragContainer>
                   ),
                   content: <HierarchyPanelContainer />
@@ -649,15 +636,6 @@ const EditorContainer = (props) => {
                     </PanelDragContainer>
                   ),
                   content: <PropertiesPanelContainer />
-                },
-                {
-                  id: 'assetsPanel',
-                  title: (
-                    <PanelDragContainer>
-                      <PanelTitle>Elements</PanelTitle>
-                    </PanelDragContainer>
-                  ),
-                  content: <AssetsPanel />
                 }
               ]
             }
@@ -667,35 +645,40 @@ const EditorContainer = (props) => {
     }
   }
   return (
-    <StyledEditorContainer id="editor-container">
+    <div
+      id="editor-container"
+      className={styles.editorContainer}
+      style={sceneLoaded.value ? { background: 'transparent' } : {}}
+    >
       <DialogContext.Provider value={[DialogComponent, setDialogComponent]}>
-        <DndProvider backend={HTML5Backend}>
+        <DndWrapper id="editor-container">
           <DragLayer />
           <ToolBar editorReady={editorReady} menu={toolbarMenu} />
-          <WorkspaceContainer>
-            <ViewportPanelContainer />
-            <DockContainer>
-              <DockLayout
-                ref={dockPanelRef}
-                defaultLayout={defaultLayout}
-                style={{ pointerEvents: 'none', position: 'absolute', left: 5, top: 55, right: 5, bottom: 5 }}
-              />
-            </DockContainer>
-          </WorkspaceContainer>
-          <Modal
-            ariaHideApp={false}
-            isOpen={!!DialogComponent}
-            onRequestClose={() => setDialogComponent(null)}
-            shouldCloseOnOverlayClick={true}
-            className="Modal"
-            overlayClassName="Overlay"
+          <ElementList />
+          <ControlText />
+          <div className={styles.workspaceContainer}>
+            <AssetDropZone />
+            <AppContext.Provider value={{ searchElement, searchHierarchy }}>
+              <DockContainer>
+                <DockLayout
+                  ref={dockPanelRef}
+                  defaultLayout={defaultLayout}
+                  style={{ position: 'absolute', left: 5, top: 55, right: 115, bottom: 35 }}
+                />
+              </DockContainer>
+            </AppContext.Provider>
+          </div>
+          <Dialog
+            open={!!DialogComponent}
+            onClose={() => setDialogComponent(null)}
+            classes={{ root: styles.dialogRoot, paper: styles.dialogPaper }}
           >
             {DialogComponent}
-          </Modal>
-        </DndProvider>
+          </Dialog>
+        </DndWrapper>
       </DialogContext.Provider>
-    </StyledEditorContainer>
+    </div>
   )
 }
 
-export default withRouter(EditorContainer)
+export default EditorContainer

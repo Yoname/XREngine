@@ -1,21 +1,23 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import Avatar from '@mui/material/Avatar'
 import Button from '@mui/material/Button'
-import TextField from '@mui/material/TextField'
-import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
-import Grid from '@mui/material/Grid'
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
-import Typography from '@mui/material/Typography'
 import Container from '@mui/material/Container'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Grid from '@mui/material/Grid'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+
+import { DialogAction } from '../../../common/services/DialogService'
 import { useDispatch } from '../../../store'
 import { useAuthState } from '../../services/AuthService'
-import { DialogAction } from '../../../common/services/DialogService'
-import SignUp from './Register'
-import ForgotPassword from './ForgotPassword'
-import styles from './Auth.module.scss'
 import { AuthService } from '../../services/AuthService'
-import { useTranslation } from 'react-i18next'
+import styles from './Auth.module.scss'
+import ForgotPassword from './ForgotPassword'
+import SignUp from './Register'
 
 const initialState = { email: '', password: '' }
 
@@ -23,7 +25,7 @@ interface Props {
   isAddConnection?: boolean
 }
 
-export const PasswordLogin = (props: Props): any => {
+export const PasswordLogin = (props: Props): JSX.Element => {
   const { isAddConnection } = props
   const auth = useAuthState()
   const [state, setState] = useState(initialState)
@@ -39,23 +41,19 @@ export const PasswordLogin = (props: Props): any => {
       const user = auth.user
       const userId = user ? user.id.value : ''
 
-      dispatch(
-        AuthService.addConnectionByPassword(
-          {
-            email: state.email,
-            password: state.password
-          },
-          userId
-        )
+      AuthService.addConnectionByPassword(
+        {
+          email: state.email,
+          password: state.password
+        },
+        userId as string
       )
       dispatch(DialogAction.dialogClose())
     } else {
-      dispatch(
-        AuthService.loginUserByPassword({
-          email: state.email,
-          password: state.password
-        })
-      )
+      AuthService.loginUserByPassword({
+        email: state.email,
+        password: state.password
+      })
     }
   }
 
@@ -101,7 +99,7 @@ export const PasswordLogin = (props: Props): any => {
             <Grid item xs={12}>
               <FormControlLabel
                 control={<Checkbox value="remember" color="primary" />}
-                label={t('user:auth.passwordLogin.lbl-rememberMe')}
+                label={t('user:auth.passwordLogin.lbl-rememberMe') as string}
               />
             </Grid>
             <Grid item xs={12}>
@@ -151,6 +149,6 @@ export const PasswordLogin = (props: Props): any => {
   )
 }
 
-const PasswordLoginWrapper = (props: Props): any => <PasswordLogin {...props} />
+const PasswordLoginWrapper = (props: Props): JSX.Element => <PasswordLogin {...props} />
 
 export default PasswordLoginWrapper

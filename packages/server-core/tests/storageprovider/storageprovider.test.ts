@@ -1,15 +1,17 @@
+import approot from 'app-root-path'
 import assert from 'assert'
+import fs from 'fs-extra'
 import fetch from 'node-fetch'
 import path from 'path'
-const https = require('https')
-import S3Provider from '../../src/media/storageprovider/s3.storage'
-import LocalStorage from '../../src/media/storageprovider/local.storage'
-import { StorageProviderInterface } from '../../src/media/storageprovider/storageprovider.interface'
-import { providerBeforeTest, providerAfterTest } from './storageproviderconfig'
-import { getContentType } from '../../src/util/fileUtils'
-import approot from 'app-root-path'
-import fs from 'fs-extra'
 import { v4 as uuid } from 'uuid'
+
+import LocalStorage from '../../src/media/storageprovider/local.storage'
+import S3Provider from '../../src/media/storageprovider/s3.storage'
+import { StorageProviderInterface } from '../../src/media/storageprovider/storageprovider.interface'
+import { getContentType } from '../../src/util/fileUtils'
+import { providerAfterTest, providerBeforeTest } from './storageproviderconfig'
+
+const https = require('https')
 
 describe('storageprovider', () => {
   const testFileName = 'TestFile.txt'
@@ -20,8 +22,14 @@ describe('storageprovider', () => {
 
   const storageProviders: StorageProviderInterface[] = []
   storageProviders.push(new LocalStorage())
-  if(process.env.STORAGE_S3_TEST_RESOURCE_BUCKET && process.env.STORAGE_AWS_ACCESS_KEY_ID && process.env.STORAGE_AWS_ACCESS_KEY_SECRET)
-    storageProviders.push(new S3Provider())
+  if (
+    process.env.STORAGE_S3_TEST_RESOURCE_BUCKET &&
+    process.env.STORAGE_AWS_ACCESS_KEY_ID &&
+    process.env.STORAGE_AWS_ACCESS_KEY_SECRET
+  ) {
+    const s3Provider = new S3Provider()
+    storageProviders.push(s3Provider)
+  }
 
   storageProviders.forEach((provider) => {
     before(async function () {
@@ -70,13 +78,15 @@ describe('storageprovider', () => {
       })
       let res
       try {
-        res = await fetch(signedUrl.url + signedUrl.fields.Key,{agent:httpAgent})
+        res = await fetch(signedUrl.url + signedUrl.fields.Key, { agent: httpAgent })
       } catch (err) {
         console.log(err)
       }
       if (!res) console.log('Make sure server is running')
       assert.ok(res?.ok)
     })
+
+    // Unable to perform move/copy and rename test cases because Fleek storage doesn't implemented those methods
 
     it(`should be able to move/copy object in ${provider.constructor.name}`, async function () {
       const fileKeyOriginal = path.join(testFolderName, testFileName)
@@ -99,7 +109,7 @@ describe('storageprovider', () => {
       const fileKeyTemp2 = path.join(temp2Folder, testFileName)
       await provider.moveObject(fileKeyTemp2, temp2Folder, false, 'Renamed.txt')
       const res = await provider.listFolderContent(temp2Folder, true)
-      if (res[0].name === 'Renamed' && res.length===1) {
+      if (res[0].name === 'Renamed' && res.length === 1) {
         assert.ok(true)
         return
       }
@@ -129,14 +139,16 @@ describe('storageprovider', () => {
 
     it(`should put over 1000 objects in ${provider.constructor.name}`, async function () {
       const promises: any[] = []
-      for(let i = 0; i < 1010; i++) {
+      for (let i = 0; i < 1010; i++) {
         const fileKey = path.join(testFolderName, `${i}-${testFileName}`)
         const data = Buffer.from([])
-        promises.push(provider.putObject({
-          Body: data,
-          Key: fileKey,
-          ContentType: getContentType(fileKey)
-        }))
+        promises.push(
+          provider.putObject({
+            Body: data,
+            Key: fileKey,
+            ContentType: getContentType(fileKey)
+          })
+        )
       }
       await Promise.all(promises)
     })

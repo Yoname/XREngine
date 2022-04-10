@@ -34,6 +34,23 @@ Make sure to increase the maximum node limit, as by default target, minimum, and
 set to 2, and XREngine's setup will definitely need more than two nodes if you've configured
 them to use relatively small instance types such as t3a.medium.
 
+
+#### Install Cluster Autoscaler (optional)
+
+While not necessary, it can be useful to have an autoscaler installed in the cluster to increase
+the number of nodes available for pods when the cluster has high traffic and to decrease that
+number when it has low traffic.
+
+Follow [these instructions](https://docs.aws.amazon.com/eks/latest/userguide/autoscaling.html#cluster-autoscaler)
+to set up the autoscaler. Any managed nodegroups created in the following steps should by default be
+tagged such that the autoscaler can control them, so no further action should be required.
+
+Note that there is some lag time on scaling up and down. It generally takes about 5 minutes from 
+the time that the autoscaler sees the need to add more nodes before those nodes have been spun up,
+the appropriate Docker image has been installed onto them, and they are ready to be used. It takes about
+15 minutes for the autoscaler to actually remove nodes that are deemed superfluous, as a hedge against
+the recent high traffic picking up again.
+
 #### Create launch template
 Go to EC2 -> Launch Templates and make a new one. Name it something like 'xrengine-production-gameserver'.
 Most settings can be left as-is, except for the following:
@@ -130,7 +147,7 @@ each individual service. To create a role, do the following:
 ### Creating an IAM role
 Go to IAM->Users, and click on the Add User button. For User Name, enter <service>-admin, e.g. `S3-admin`.
 Check the box for Programmatic Access, the click on the Next:Permissions button.
-Click on 'Attach exsiting policies directly'. In the Filter Policies text box, you'll want to
+Click on 'Attach existing policies directly'. In the Filter Policies text box, you'll want to
 enter the name of the service to narrow down the policy list significantly. Then, look for the FullAccess
 policy for that service and select that, and click the Next:Tags button. You don't need to tag it with
 anything, just click the Next:Review button, then the Create User button.
@@ -395,7 +412,7 @@ Once you have been approved, email login should work for any email address.
 
 #### Verifying test emails
 Before you have production use for your SES domain, in order to log in you'll have to verify specific email
-addresses with SES. Go to SES->Identity Management->Email Adresses. Click on the button 'Verify a New Email
+addresses with SES. Go to SES->Identity Management->Email Addresses. Click on the button 'Verify a New Email
 Address'. Enter the address you want to test with, then click 'Verify This Email Address'. You should soon
 receive an email with a link to verify it (it may go to your Spam folder). Once you've followed the link,
 you can log in with that address.
@@ -563,7 +580,9 @@ configuration values, and then letting the deployment process fill in the rest.
 ### Fill in Helm config file with variables
 Template Helm config files for dev and prod deployments can be found at packages/ops/configs/<dev/prod>.template.values.yaml.
 Before filling them in, make a copy elsewhere, call that '<dev/prod>.values.yaml', and edit that copy.
-There's also a <dev/prod>.builder.template.values.yaml template, which should also be filled in.
+Both the builder and main deployments should use the same config file. When the builder seeds the database,
+it needs a number of values that only need to be configured for the other services, so all of the values
+need to be defined in one config file.
 
 There are many fields to fill in, most marked with <>. Not all are necessary for all situations - if you're not
 using social login, for instance, you don't need credentials for Github/Google/Facebook/etc.
@@ -601,11 +620,11 @@ You'll need to replace every <repository_name> with the full ECR_URL of your non
 Each services has to have the proper `-<service>` suffix on it, e.g. `-api`, `-client`, etc.
 
 ### Run Helm install
-Run ```helm install -f </path/to/*.builder.values.yaml> <stage_name>-builder xrengine/xrengine-builder```
+Run ```helm install -f </path/to/*.values.yaml> <stage_name>-builder xrengine/xrengine-builder```
 and the run ```helm install -f </path/to/*.values.yaml> <stage_name> xrengine/xrengine```
 
-This will spin up the main and builder deployments using their respective Helm config files, <dev/prod>.builder.values.yaml and
-<dev/prod>.values.yaml. Neither will fully work yet, since there's no valid image in the repos yet. The GitHub
+This will spin up the main and builder deployments using the Helm config file, <dev/prod>.values.yaml.
+Neither will fully work yet, since there's no valid image in the repos yet. The GitHub
 Actions and builder processes will make those images and update the deployments with the tags of the images they've built
 so that they can pull down and use those images.
 

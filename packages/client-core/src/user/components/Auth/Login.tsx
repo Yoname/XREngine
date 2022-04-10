@@ -1,20 +1,22 @@
 import React, { Fragment, useEffect, useState } from 'react'
-import EmailIcon from '@mui/icons-material/Email'
-import SocialIcon from '@mui/icons-material/Public'
-import UserIcon from '@mui/icons-material/Person'
-import { Config } from '@xrengine/common/src/config'
-import MagicLinkEmail from './MagicLinkEmail'
-import Tabs from '@mui/material/Tabs'
-import Tab from '@mui/material/Tab'
-import SocialLogin from './SocialLogin'
-import PasswordLogin from './PasswordLogin'
 import { useTranslation } from 'react-i18next'
+
+import EmailIcon from '@mui/icons-material/Email'
+import UserIcon from '@mui/icons-material/Person'
+import SocialIcon from '@mui/icons-material/Public'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
+
 import { AuthSettingService } from '../../../admin/services/Setting/AuthSettingService'
 import { useAdminAuthSettingState } from '../../../admin/services/Setting/AuthSettingService'
+import MagicLinkEmail from './MagicLinkEmail'
+import PasswordLogin from './PasswordLogin'
+import SocialLogin from './SocialLogin'
 
 const initialState = {
   jwt: true,
   local: false,
+  discord: false,
   facebook: false,
   github: false,
   google: false,
@@ -24,13 +26,19 @@ const initialState = {
   emailMagicLink: false
 }
 
-const TabPanel = (props: any): any => {
+interface Props {
+  children: JSX.Element
+  value: number
+  index: number
+}
+
+const TabPanel = (props: Props): JSX.Element => {
   const { children, value, index } = props
 
   return <Fragment>{value === index && children}</Fragment>
 }
 
-const SignIn = (): any => {
+const SignIn = (): JSX.Element => {
   const authSettingState = useAdminAuthSettingState()
   const [authSetting] = authSettingState?.authSettings?.value || []
   const [state, setState] = useState(initialState)
@@ -54,6 +62,7 @@ const SignIn = (): any => {
   let enableSmsMagicLink = true
   let enableEmailMagicLink = true
   let enableUserPassword = false
+  let enableDiscordSocial = false
   let enableGithubSocial = false
   let enableGoogleSocial = false
   let enableFacebookSocial = false
@@ -68,18 +77,18 @@ const SignIn = (): any => {
     setTabIndex(newValue)
   }
 
-  if (Config.publicRuntimeConfig?.auth) {
-    enableSmsMagicLink = state.smsMagicLink
-    enableEmailMagicLink = state.emailMagicLink
-    enableUserPassword = state.local
-    enableGithubSocial = state.github
-    enableGoogleSocial = state.google
-    enableFacebookSocial = state.facebook
-    enableLinkedInSocial = state.linkedin
-    enableTwitterSocial = state.twitter
-  }
+  enableSmsMagicLink = state.smsMagicLink
+  enableEmailMagicLink = state.emailMagicLink
+  enableUserPassword = state.local
+  enableDiscordSocial = state.discord
+  enableGithubSocial = state.github
+  enableGoogleSocial = state.google
+  enableFacebookSocial = state.facebook
+  enableLinkedInSocial = state.linkedin
+  enableTwitterSocial = state.twitter
 
   const socials = [
+    enableDiscordSocial,
     enableGithubSocial,
     enableGoogleSocial,
     enableFacebookSocial,
@@ -90,6 +99,7 @@ const SignIn = (): any => {
     enableSmsMagicLink,
     enableEmailMagicLink,
     enableUserPassword,
+    enableDiscordSocial,
     enableGithubSocial,
     enableGoogleSocial,
     enableFacebookSocial,
@@ -135,6 +145,7 @@ const SignIn = (): any => {
     const socialTabPanel = socialCount > 0 && (
       <TabPanel value={tabIndex} index={index}>
         <SocialLogin
+          enableDiscordSocial={enableDiscordSocial}
           enableFacebookSocial={enableFacebookSocial}
           enableGoogleSocial={enableGoogleSocial}
           enableGithubSocial={enableGithubSocial}

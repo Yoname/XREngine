@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react'
-import { Button, SecondaryButton } from '../inputs/Button'
 import styled from 'styled-components'
-import i18n from 'i18next'
+
+import { Button, SecondaryButton } from '../inputs/Button'
 
 /**
  * DialogContainer used as container element for DialogHeader, DialogContent and DialogBottomNav.
@@ -12,7 +12,6 @@ import i18n from 'i18next'
 const DialogContainer = (styled as any).form`
   display: flex;
   flex-direction: column;
-  flex: 1;
   border-radius: 4px;
   background-color: #282c31;
   max-width: 800px;
@@ -38,6 +37,7 @@ const DialogHeader = (styled as any).div`
   background: black;
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
+  color: white;
 
   > * {
     display: flex;
@@ -52,7 +52,7 @@ const DialogHeader = (styled as any).div`
  * @type {Styled component}
  */
 export const DialogContent = (styled as any).div`
-  color: ${(props) => props.theme.text2};
+  color: var(--text2);
   display: flex;
   flex: 1;
   flex-direction: row;
@@ -63,7 +63,7 @@ export const DialogContent = (styled as any).div`
 
   h1 {
     font-size: 2em;
-    color: ${(props) => props.theme.text};
+    color: var(--text);
     margin-bottom: 16px;
   }
 
@@ -91,7 +91,7 @@ const DialogBottomNav = (styled as any).div`
   padding: 8px;
 
   a {
-    color: ${(props) => props.theme.text2};
+    color: var(--text2);
   }
 
   button {

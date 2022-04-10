@@ -1,9 +1,11 @@
+import appRootPath from 'app-root-path'
+import path from 'path'
+
+import { ProjectConfigInterface, ProjectEventHooks } from '@xrengine/projects/ProjectConfigInterface'
+
 import { Application } from '../../../declarations'
 import config from '../../appconfig'
 import { useStorageProvider } from '../../media/storageprovider/storageprovider'
-import path from 'path'
-import { ProjectConfigInterface, ProjectEventHooks } from '@xrengine/projects/ProjectConfigInterface'
-import appRootPath from 'app-root-path'
 
 export const retriggerBuilderService = async (app: Application) => {
   try {
@@ -17,8 +19,9 @@ export const retriggerBuilderService = async (app: Application) => {
   if (app.k8AppsClient) {
     try {
       console.log('Attempting to reload k8s clients!')
-      const restartClientsResponse = await app.k8AppsClient.patch(
-        `namespaces/default/deployments/${config.server.releaseName}-builder-xrengine-builder`,
+      const restartClientsResponse = await app.k8AppsClient.patchNamespacedDeployment(
+        `${config.server.releaseName}-builder-xrengine-builder`,
+        'default',
         {
           spec: {
             template: {
@@ -30,7 +33,15 @@ export const retriggerBuilderService = async (app: Application) => {
             }
           }
         },
-        { contentType: 'application/strategic-merge-patch+json' }
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          headers: {
+            'Content-Type': 'application/strategic-merge-patch+json'
+          }
+        }
       )
       console.log('restartClientsResponse', restartClientsResponse)
       return restartClientsResponse

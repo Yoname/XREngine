@@ -1,12 +1,24 @@
 import React from 'react'
-import NodeEditor from './NodeEditor'
-import InputGroup from '../inputs/InputGroup'
-import AudioInput from '../inputs/AudioInput'
-import VolumeUpIcon from '@mui/icons-material/VolumeUp'
-import AudioSourceProperties from './AudioSourceProperties'
-import useSetPropertySelected from './useSetPropertySelected'
-import i18n from 'i18next'
 import { useTranslation } from 'react-i18next'
+
+import { AssetLoader } from '@xrengine/engine/src/assets/classes/AssetLoader'
+import { AudioComponent } from '@xrengine/engine/src/audio/components/AudioComponent'
+import { useEngineState } from '@xrengine/engine/src/ecs/classes/EngineService'
+import { getComponent, hasComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { ErrorComponent } from '@xrengine/engine/src/scene/components/ErrorComponent'
+import { VideoComponent } from '@xrengine/engine/src/scene/components/VideoComponent'
+import { VolumetricComponent } from '@xrengine/engine/src/scene/components/VolumetricComponent'
+import { toggleAudio } from '@xrengine/engine/src/scene/functions/loaders/AudioFunctions'
+
+import VolumeUpIcon from '@mui/icons-material/VolumeUp'
+
+import AudioInput from '../inputs/AudioInput'
+import { PropertiesPanelButton } from '../inputs/Button'
+import InputGroup from '../inputs/InputGroup'
+import AudioSourceProperties from './AudioSourceProperties'
+import MediaSourceProperties from './MediaSourceProperties'
+import NodeEditor from './NodeEditor'
+import { EditorComponentType, updateProperty } from './Util'
 
 /**
  * AudioNodeEditor used to customize audio element on the scene.
@@ -15,20 +27,43 @@ import { useTranslation } from 'react-i18next'
  * @param       {Object} props
  * @constructor
  */
-export function AudioNodeEditor(props) {
-  const { node } = props
+export const AudioNodeEditor: EditorComponentType = (props) => {
   const { t } = useTranslation()
+  const engineState = useEngineState()
+  const entity = props.node.entity
 
-  AudioNodeEditor.description = t('editor:properties.audio.description')
+  const audioComponent = getComponent(entity, AudioComponent)
+  const isVideo = hasComponent(entity, VideoComponent)
+  const isVolumetric = hasComponent(entity, VolumetricComponent)
+  const hasError = engineState.errorEntities[entity].get() || hasComponent(entity, ErrorComponent)
 
-  const onChangeSrc = useSetPropertySelected('src')
-  //returning view to customize properties
+  const updateSrc = async (src: string) => {
+    AssetLoader.Cache.delete(src)
+    await AssetLoader.loadAsync(src)
+    updateProperty(AudioComponent, 'audioSource')(src)
+  }
+
   return (
-    <NodeEditor description={AudioNodeEditor.description} {...props}>
-      <InputGroup name="Audio Url" label={t('editor:properties.audio.lbl-audiourl')}>
-        <AudioInput value={node.src} onChange={onChangeSrc} />
-      </InputGroup>
-      <AudioSourceProperties {...props} />
+    <NodeEditor
+      {...props}
+      name={t('editor:properties.audio.name')}
+      description={t('editor:properties.audio.description')}
+    >
+      {!isVideo && !isVolumetric && (
+        <InputGroup name="Audio Url" label={t('editor:properties.audio.lbl-audiourl')}>
+          <AudioInput value={audioComponent.audioSource} onChange={updateSrc} />
+          {hasError && <div style={{ marginTop: 2, color: '#FF8C00' }}>{t('editor:properties.audio.error-url')}</div>}
+        </InputGroup>
+      )}
+      <AudioSourceProperties node={props.node} multiEdit={props.multiEdit} />
+      {!isVideo && !isVolumetric && (
+        <>
+          <MediaSourceProperties node={props.node} multiEdit={props.multiEdit} />
+          <PropertiesPanelButton onClick={() => toggleAudio(entity)}>
+            {t('editor:properties.audio.lbl-test')}
+          </PropertiesPanelButton>
+        </>
+      )}
     </NodeEditor>
   )
 }
@@ -36,7 +71,4 @@ export function AudioNodeEditor(props) {
 //setting icon component name
 AudioNodeEditor.iconComponent = VolumeUpIcon
 
-//setting description for the element
-//shows this description in NodeEditor with title of element
-AudioNodeEditor.description = i18n.t('editor:properties.audio.description')
 export default AudioNodeEditor

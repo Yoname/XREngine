@@ -1,8 +1,9 @@
-import { System } from '@xrengine/engine/src/ecs/classes/System'
+import { Box3, Matrix3, Sphere, Spherical, Vector3 } from 'three'
+
 import { World } from '@xrengine/engine/src/ecs/classes/World'
 import { defineQuery, getComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
 import { Object3DComponent } from '@xrengine/engine/src/scene/components/Object3DComponent'
-import { Vector3, Matrix3, Box3, Sphere, Spherical } from 'three'
+
 import { EditorCameraComponent } from '../classes/EditorCameraComponent'
 
 const ZOOM_SPEED = 0.1
@@ -13,7 +14,7 @@ const ORBIT_SPEED = 5
 /**
  * @author Gheric Speiginer <github.com/speigg>
  */
-export default async function GizmoSystem(world: World): Promise<System> {
+export default async function GizmoSystem(world: World) {
   const box = new Box3()
   const delta = new Vector3()
   const normalMatrix = new Matrix3()
@@ -25,10 +26,8 @@ export default async function GizmoSystem(world: World): Promise<System> {
 
     for (const entity of cameraQuery()) {
       const cameraComponent = getComponent(entity, EditorCameraComponent)
-
-      if (!cameraComponent.dirty) return
-
       const camera = getComponent(entity, Object3DComponent)?.value
+
       if (cameraComponent.zoomDelta) {
         const distance = camera.position.distanceTo(cameraComponent.center!)
         delta.set(0, 0, cameraComponent.zoomDelta * distance * ZOOM_SPEED)
@@ -41,19 +40,25 @@ export default async function GizmoSystem(world: World): Promise<System> {
         cameraComponent.zoomDelta = 0
       }
 
-      if (cameraComponent.focusedObjects) {
+      if (cameraComponent.refocus) {
         let distance = 0
         if (cameraComponent.focusedObjects.length === 0) {
           cameraComponent.center.set(0, 0, 0)
           distance = 10
         } else {
           box.makeEmpty()
-          for (const object of cameraComponent.focusedObjects) box.expandByObject(object)
+          for (const object of cameraComponent.focusedObjects) {
+            const obj3d = getComponent(object.entity, Object3DComponent)?.value
+            if (obj3d) box.expandByObject(obj3d)
+          }
 
           if (box.isEmpty()) {
             // Focusing on an Group, AmbientLight, etc
-            cameraComponent.center.setFromMatrixPosition(cameraComponent.focusedObjects[0].matrixWorld)
-            distance = 0.1
+            const obj3d = getComponent(cameraComponent.focusedObjects[0].entity, Object3DComponent)?.value
+            if (obj3d) {
+              cameraComponent.center.setFromMatrixPosition(obj3d.matrixWorld)
+              distance = 0.1
+            }
           } else {
             box.getCenter(cameraComponent.center)
             distance = box.getBoundingSphere(sphere).radius
@@ -66,14 +71,15 @@ export default async function GizmoSystem(world: World): Promise<System> {
           .multiplyScalar(Math.min(distance, MAX_FOCUS_DISTANCE) * 4)
         camera.position.copy(cameraComponent.center).add(delta)
 
-        cameraComponent.focusedObjects = null
+        cameraComponent.focusedObjects = null!
+        cameraComponent.refocus = false
       }
 
       if (cameraComponent.isPanning) {
         const distance = camera.position.distanceTo(cameraComponent.center)
         delta
           .set(cameraComponent.cursorDeltaX, -cameraComponent.cursorDeltaY, 0)
-          .multiplyScalar(distance * PAN_SPEED)
+          .multiplyScalar(Math.max(distance, 1) * PAN_SPEED)
           .applyMatrix3(normalMatrix.getNormalMatrix(camera.matrix))
         camera.position.add(delta)
         cameraComponent.center.add(delta)
@@ -94,8 +100,6 @@ export default async function GizmoSystem(world: World): Promise<System> {
 
         cameraComponent.isOrbiting = false
       }
-
-      cameraComponent.dirty = false
     }
   }
 }

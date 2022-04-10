@@ -1,20 +1,21 @@
+import { Quaternion, Vector3 } from 'three'
+
+import { ComponentType } from '../../ecs/functions/ComponentFunctions'
+import { RaycastComponent } from '../components/RaycastComponent'
+import { putIntoPhysXHeap } from '../functions/physxHelpers'
 import { loadPhysX } from '../physx/loadPhysX'
 import {
-  PhysXConfig,
   BodyType,
-  RigidBody,
-  ShapeOptions,
+  BoxControllerConfig,
+  CapsuleControllerConfig,
   CollisionEvents,
   ControllerEvents,
+  ObstacleConfig,
+  PhysXConfig,
+  RigidBody,
   SceneQueryType,
-  CapsuleControllerConfig,
-  BoxControllerConfig,
-  ObstacleConfig
+  ShapeOptions
 } from '../types/PhysicsTypes'
-import { putIntoPhysXHeap } from '../functions/physxHelpers'
-import { Quaternion, Vector3 } from 'three'
-import { RaycastComponent } from '../components/RaycastComponent'
-import { ComponentType } from '../../ecs/functions/ComponentFunctions'
 
 const defaultMask = 0
 
@@ -476,6 +477,7 @@ export class Physics {
     const handle = this.obstacleContext.addObstacle(obstacle)
     ;(obstacle as any)._handle = handle
     this.obstacles.set(id, obstacle)
+    return obstacle
   }
 
   removeObstacle(obstacle: PhysX.PxObstacle) {
@@ -555,12 +557,22 @@ export class Physics {
   }
 }
 
-// TODO double check this
 export const isTriggerShape = (shape: PhysX.PxShape) => {
   return shape.getFlags().isSet(PhysX.PxShapeFlag.eTRIGGER_SHAPE)
 }
 
-// TODO double check this
+export const setTriggerShape = (shape: PhysX.PxShape, value: boolean) => {
+  // must be done this way as flags are order dependent, these two flags cannot be raised at the same time
+  if (value) {
+    shape.setFlag(PhysX.PxShapeFlag.eSIMULATION_SHAPE, false)
+    shape.setFlag(PhysX.PxShapeFlag.eTRIGGER_SHAPE, true)
+  } else {
+    shape.setFlag(PhysX.PxShapeFlag.eTRIGGER_SHAPE, false)
+    shape.setFlag(PhysX.PxShapeFlag.eSIMULATION_SHAPE, true)
+  }
+  shape._debugNeedsUpdate = true
+}
+
 export const getGeometryType = (shape: PhysX.PxShape) => {
   return (shape.getGeometry().getType() as any).value
 }

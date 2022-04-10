@@ -1,8 +1,9 @@
 import React from 'react'
+
 import styles from './toast.module.scss'
 
 const Toast = ({
-  messages = [],
+  messages = [] as any[],
   showAction = false,
   autoHideDuration = 3000,
   insertDirection = 'top',
@@ -29,7 +30,7 @@ const Toast = ({
   }
 
   const renderToasts = () => {
-    const msgs = []
+    const msgs: JSX.Element[] = []
     if (insertDirection.toLowerCase() === 'top') {
       const limit = Math.max(messages.length - maxMessagesToShow, 0)
       for (let i = messages.length - 1; i >= limit; i--) {

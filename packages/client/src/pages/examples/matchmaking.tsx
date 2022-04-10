@@ -1,8 +1,10 @@
+// @ts-nocheck
 import React, { useEffect, useState } from 'react'
+import { useHistory } from 'react-router-dom'
+
 import { client } from '@xrengine/client-core/src/feathers'
 import { AuthService } from '@xrengine/client-core/src/user/services/AuthService'
 import { MatchmakingTicketAssignment, OpenMatchTicket } from '@xrengine/matchmaking/src/interfaces'
-import { useHistory } from 'react-router-dom'
 
 const gameModes = ['ctf', 'tournament']
 
@@ -40,7 +42,7 @@ const Page = () => {
   console.log('RENDER', ticketData, connection)
 
   useEffect(() => {
-    AuthService.doLoginAuto(true).then(async () => {
+    AuthService.doLoginAuto().then(async () => {
       const _ticketData = await findCurrentTicketData()
       setTicketData(_ticketData)
       setIsUpdating(false)
@@ -125,7 +127,7 @@ const Page = () => {
   }
 
   return (
-    <div style={{ backgroundColor: 'black', margin: '10px' }}>
+    <div style={{ pointerEvents: 'auto', backgroundColor: 'black', margin: '10px' }}>
       {isUpdating ? (
         <>Loading...</>
       ) : (

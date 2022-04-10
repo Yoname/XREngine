@@ -1,9 +1,12 @@
-import { DataTypes, Sequelize } from 'sequelize'
+import { DataTypes, Model, Sequelize } from 'sequelize'
+
+import { ServerSettingInterface } from '@xrengine/common/src/dbmodels/ServerSetting'
+
 import { Application } from '../../../declarations'
 
 export default (app: Application) => {
   const sequelizeClient: Sequelize = app.get('sequelizeClient')
-  const ServerSetting = sequelizeClient.define(
+  const ServerSetting = sequelizeClient.define<Model<ServerSettingInterface>>(
     'serverSetting',
     {
       id: {
@@ -14,10 +17,6 @@ export default (app: Application) => {
       },
       hostname: {
         type: DataTypes.STRING,
-        allowNull: true
-      },
-      enabled: {
-        type: DataTypes.BOOLEAN,
         allowNull: true
       },
       mode: {

@@ -1,32 +1,32 @@
-import React, { useEffect } from 'react'
-import { useStyles } from './styles'
+import React, { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Grid, Paper, Typography } from '@mui/material'
 import { InputBase } from '@mui/material'
-import Switch from '@mui/material/Switch'
-import { useDispatch } from '../../../store'
-import { useSettingAnalyticsState } from '../../services/Setting/SettingAnalyticsService'
-import { SettingAnalyticsService } from '../../services/Setting/SettingAnalyticsService'
+
 import { useAuthState } from '../../../user/services/AuthService'
+import { SettingAnalyticsService, useSettingAnalyticsState } from '../../services/Setting/SettingAnalyticsService'
+import styles from '../../styles/settings.module.scss'
 
 interface AnalyticsProps {}
 
 const Analytics = (props: AnalyticsProps) => {
-  const classes = useStyles()
   const settingAnalyticsState = useSettingAnalyticsState()
   const settingAnalytics = settingAnalyticsState.analytics
-
-  const [enabled, setEnabled] = React.useState({
-    checkedA: true,
-    checkedB: true
-  })
-  const dispatch = useDispatch()
+  const { t } = useTranslation()
   const authState = useAuthState()
   const user = authState.user
-  const handleEnable = (event) => {
-    setEnabled({ ...enabled, [event.target.name]: event.target.checked })
-  }
+  const isMounted = useRef(false)
 
   useEffect(() => {
+    isMounted.current = true
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMounted.current) return
     if (user?.id?.value != null && settingAnalyticsState?.updateNeeded?.value === true) {
       SettingAnalyticsService.fetchSettingsAnalytics()
     }
@@ -41,37 +41,23 @@ const Analytics = (props: AnalyticsProps) => {
   return (
     <div>
       <form>
-        <Typography component="h1" className={classes.settingsHeading}>
-          Analytics
+        <Typography component="h1" className={styles.settingsHeading}>
+          {t('admin:components.analytics.analytics')}
         </Typography>
-        <div className={classes.root}>
+        <div className={styles.root}>
           <Grid container spacing={3}>
             <Grid item xs={6} sm={4}>
-              <label>Enabled</label>
-              <Paper component="div" className={classes.createInput}>
-                <Switch
-                  disabled
-                  checked={enabled.checkedB}
-                  onChange={handleEnable}
-                  color="primary"
-                  name="checkedB"
-                  inputProps={{ 'aria-label': 'primary checkbox' }}
-                />
-              </Paper>
-            </Grid>
-
-            <Grid item xs={6} sm={4}>
-              <label> Port </label>
-              <Paper component="div" className={classes.createInput}>
-                <InputBase name="port" className={classes.input} value={Data.port} disabled style={{ color: '#fff' }} />
+              <label> {t('admin:components.analytics.port')} </label>
+              <Paper component="div" className={styles.createInput}>
+                <InputBase name="port" className={styles.input} value={Data.port} disabled style={{ color: '#fff' }} />
               </Paper>
             </Grid>
             <Grid item xs={6} sm={4}>
-              <label> Process Interval </label>
-              <Paper component="div" className={classes.createInput}>
+              <label> {t('admin:components.analytics.processInterval')} </label>
+              <Paper component="div" className={styles.createInput}>
                 <InputBase
                   name="processinterval"
-                  className={classes.input}
+                  className={styles.input}
                   value={Data.processInterval}
                   disabled
                   style={{ color: '#fff' }}

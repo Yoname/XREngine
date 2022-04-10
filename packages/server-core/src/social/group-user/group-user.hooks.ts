@@ -1,17 +1,18 @@
+import { HookContext } from '@feathersjs/feathers'
+import { iff, isProvider } from 'feathers-hooks-common'
+
 import groupPermissionAuthenticate from '@xrengine/server-core/src/hooks/group-permission-authenticate'
 import groupUserPermissionAuthenticate from '@xrengine/server-core/src/hooks/group-user-permission-authenticate'
-import * as authentication from '@feathersjs/authentication'
-import { disallow, isProvider, iff } from 'feathers-hooks-common'
-import { HookContext } from '@feathersjs/feathers'
 
-const { authenticate } = authentication.hooks
+import authenticate from '../../hooks/authenticate'
+import restrictUserRole from '../../hooks/restrict-user-role'
 
 export default {
   before: {
-    all: [authenticate('jwt')],
+    all: [authenticate()],
     find: [iff(isProvider('external'), groupUserPermissionAuthenticate() as any)],
     get: [],
-    create: [disallow('external')],
+    create: [iff(isProvider('external'), restrictUserRole('admin') as any)],
     update: [],
     patch: [],
     remove: [groupPermissionAuthenticate()]

@@ -1,19 +1,21 @@
 import React, { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { Visibility, VisibilityOff } from '@mui/icons-material'
 import Button from '@mui/material/Button'
-import Grid from '@mui/material/Grid'
 import Container from '@mui/material/Container'
+import Grid from '@mui/material/Grid'
+import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
+import OutlinedInput from '@mui/material/OutlinedInput'
+
 import { useDispatch } from '../../../store'
 import { AuthService } from '../../services/AuthService'
 import styles from './Auth.module.scss'
-import OutlinedInput from '@mui/material/OutlinedInput'
-import InputAdornment from '@mui/material/InputAdornment'
-import IconButton from '@mui/material/IconButton'
-import { Visibility, VisibilityOff } from '@mui/icons-material'
-import { useTranslation } from 'react-i18next'
 
 interface Props {}
 
-const SignUp = (props: Props): any => {
+const SignUp = (props: Props): JSX.Element => {
   const dispatch = useDispatch()
 
   const initialState = {
@@ -34,12 +36,11 @@ const SignUp = (props: Props): any => {
       email: state.email,
       password: state.password
     })
-    dispatch(
-      AuthService.registerUserByEmail({
-        email: state.email,
-        password: state.password
-      })
-    )
+
+    AuthService.registerUserByEmail({
+      email: state.email,
+      password: state.password
+    })
   }
 
   const [values, setValues] = useState({ showPassword: false, showPasswordConfirm: false })
@@ -54,12 +55,12 @@ const SignUp = (props: Props): any => {
     event.preventDefault()
   }
   const password = useRef<HTMLInputElement>()
-  const confirm_password = useRef<HTMLInputElement>()
+  const confirm_password = useRef<HTMLInputElement>(null!)
   function validatePassword() {
-    if (password.current.value != confirm_password.current.value) {
-      confirm_password.current.setCustomValidity(t('user:auth.register.passwordNotMatch'))
+    if (password?.current?.value != confirm_password?.current.value) {
+      confirm_password?.current.setCustomValidity(t('user:auth.register.passwordNotMatch'))
     } else {
-      confirm_password.current.setCustomValidity('')
+      confirm_password?.current.setCustomValidity('')
     }
   }
 
@@ -147,6 +148,6 @@ const SignUp = (props: Props): any => {
   )
 }
 
-const SignUpWrapper = (props: any): any => <SignUp {...props} />
+const SignUpWrapper = (props: Props): JSX.Element => <SignUp {...props} />
 
 export default SignUpWrapper

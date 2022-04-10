@@ -1,20 +1,25 @@
 /**
  * @author Abhishek Pathak <abhi.pathak401@gmail.com>
  */
-
 import React from 'react'
+
+import {
+  CubemapBakeComponent,
+  CubemapBakeComponentType
+} from '@xrengine/engine/src/scene/components/CubemapBakeComponent'
 import { CubemapBakeRefreshTypes } from '@xrengine/engine/src/scene/types/CubemapBakeRefreshTypes'
 import { CubemapBakeTypes } from '@xrengine/engine/src/scene/types/CubemapBakeTypes'
+
 import BooleanInput from '../inputs/BooleanInput'
 import InputGroup from '../inputs/InputGroup'
 import SelectInput from '../inputs/SelectInput'
 import Vector3Input from '../inputs/Vector3Input'
 import { BakePropertyTypes } from './CubemapBakeNodeEditor'
-import { CommandManager } from '../../managers/CommandManager'
+import { updateProperty } from './Util'
 
 type CubemapBakePropertyEditorProps = {
-  element?: any
-  node?: any
+  bakeComponent: CubemapBakeComponentType
+  element: any
 }
 
 const cubemapBakeSelectTypes = [
@@ -63,33 +68,20 @@ const bakeResolutionTypes = [
 ]
 
 export const CubemapBakeProperties = (props: CubemapBakePropertyEditorProps) => {
-  const onChangeProperty = (value, option: string) => {
-    CommandManager.instance.setPropertyOnSelection(`cubemapBakeSettings.${option}`, value)
-  }
+  const getPropertyValue = (option: string) => props.bakeComponent.options[option]
 
-  const getPropertyValue = (option: string) => {
-    const value = (props.node as any)['cubemapBakeSettings'][option]
-    return value
-  }
   let renderVal = <></>
   const label = props.element.label
   const propertyName = props.element.propertyName
+  const changehandler = updateProperty(CubemapBakeComponent, `options.${propertyName}` as any)
 
   switch (props.element.type) {
     case BakePropertyTypes.Boolean:
-      renderVal = (
-        <BooleanInput value={getPropertyValue(propertyName)} onChange={(id) => onChangeProperty(id, propertyName)} />
-      )
+      renderVal = <BooleanInput value={getPropertyValue(propertyName)} onChange={changehandler} />
       break
     case BakePropertyTypes.CubemapBakeType:
       renderVal = (
-        <SelectInput
-          options={cubemapBakeSelectTypes}
-          onChange={(id) => {
-            onChangeProperty(id, propertyName)
-          }}
-          value={getPropertyValue(propertyName)}
-        />
+        <SelectInput options={cubemapBakeSelectTypes} onChange={changehandler} value={getPropertyValue(propertyName)} />
       )
       break
 
@@ -97,9 +89,7 @@ export const CubemapBakeProperties = (props: CubemapBakePropertyEditorProps) => 
       renderVal = (
         <SelectInput
           options={cubemapBakeRefreshSelectTypes}
-          onChange={(id) => {
-            onChangeProperty(id, propertyName)
-          }}
+          onChange={changehandler}
           value={getPropertyValue(propertyName)}
         />
       )
@@ -107,31 +97,19 @@ export const CubemapBakeProperties = (props: CubemapBakePropertyEditorProps) => 
 
     case BakePropertyTypes.Resolution:
       renderVal = (
-        <SelectInput
-          options={bakeResolutionTypes}
-          onChange={(id) => {
-            onChangeProperty(id, propertyName)
-          }}
-          value={getPropertyValue(propertyName)}
-        />
+        <SelectInput options={bakeResolutionTypes} onChange={changehandler} value={getPropertyValue(propertyName)} />
       )
       break
 
     case BakePropertyTypes.Vector:
-      renderVal = (
-        <Vector3Input
-          onChange={(id) => {
-            onChangeProperty(id, propertyName)
-          }}
-          value={getPropertyValue(propertyName)}
-        />
-      )
+      renderVal = <Vector3Input onChange={changehandler} value={getPropertyValue(propertyName)} />
       break
 
     default:
       renderVal = <div>Undefined value Type</div>
       break
   }
+
   return (
     <InputGroup name={label} label={label}>
       {renderVal}

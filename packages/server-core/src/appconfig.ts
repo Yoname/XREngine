@@ -1,14 +1,50 @@
-import dotenv from 'dotenv-flow'
 import appRootPath from 'app-root-path'
 import * as chargebeeInst from 'chargebee'
+import dotenv from 'dotenv-flow'
 import path from 'path'
 import url from 'url'
-import '@xrengine/engine/src/patchEngineNode'
+
+const { register } = require('trace-unhandled')
+
+register()
 
 const kubernetesEnabled = process.env.KUBERNETES === 'true'
 const testEnabled = process.env.TEST === 'true'
 
+// ensure process fails properly
+process.on('exit', async (code) => {
+  console.log('Server EXIT:', code)
+})
+
+process.on('SIGTERM', async (err) => {
+  console.log('Server SIGTERM')
+  console.log(err)
+  process.exit(1)
+})
+process.on('SIGINT', () => {
+  console.log('RECEIVED SIGINT')
+  process.exit(1)
+})
+
+//emitted when an uncaught JavaScript exception bubbles
+process.on('uncaughtException', (err) => {
+  console.log('UNCAUGHT EXCEPTION')
+  console.log(err)
+  process.exit(1)
+})
+
+//emitted whenever a Promise is rejected and no error handler is attached to it
+process.on('unhandledRejection', (reason, p) => {
+  console.log('UNHANDLED REJECTION')
+  console.log(reason)
+  console.log(p)
+  process.exit(1)
+})
+
 if (globalThis.process?.env.APP_ENV === 'development') {
+  // Avoids DEPTH_ZERO_SELF_SIGNED_CERT error for self-signed certs - needed for local storage provider
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+
   var fs = require('fs')
   if (!fs.existsSync(appRootPath.path + '/.env') && !fs.existsSync(appRootPath.path + '/.env.local')) {
     var fromEnvPath = appRootPath.path + '/.env.local.default'
@@ -51,7 +87,6 @@ db.url =
  * Server / backend
  */
 const server = {
-  enabled: process.env.SERVER_ENABLED === 'true',
   mode: process.env.SERVER_MODE!,
   hostname: process.env.SERVER_HOST!,
   port: process.env.SERVER_PORT!,
@@ -94,7 +129,6 @@ server.url = process.env.SERVER_URL || url.format(obj)
  * Client / frontend
  */
 const client = {
-  enabled: process.env.CLIENT_ENABLED === 'true',
   logo: process.env.APP_LOGO!,
   title: process.env.APP_TITLE!,
   url:
@@ -108,7 +142,7 @@ const client = {
 // TODO: rename to 'instanceserver'
 const gameserver = {
   clientHost: process.env.APP_HOST!,
-  enabled: process.env.GAMESERVER_ENABLED === 'true',
+  hostname: process.env.GAMESERVER_HOST,
   rtc_start_port: parseInt(process.env.RTC_START_PORT!),
   rtc_end_port: parseInt(process.env.RTC_END_PORT!),
   rtc_port_block_size: parseInt(process.env.RTC_PORT_BLOCK_SIZE!),
@@ -117,7 +151,6 @@ const gameserver = {
   domain: process.env.GAMESERVER_DOMAIN || 'gameserver.theoverlay.io',
   releaseName: process.env.RELEASE_NAME!,
   port: process.env.GAMESERVER_PORT!,
-  mode: process.env.GAMESERVER_MODE!,
   locationName: process.env.PRELOAD_LOCATION_NAME!,
   shutdownDelayMs: parseInt(process.env.GAMESERVER_SHUTDOWN_DELAY_MS!) || 0
 }
@@ -126,7 +159,6 @@ const gameserver = {
  * Analytics generator
  */
 const analytics = {
-  enabled: process.env.ANALYTICS_ENABLED === 'true',
   port: process.env.ANALYTICS_PORT!,
   processInterval: process.env.ANALYTICS_PROCESS_INTERVAL_SECONDS!
 }
@@ -163,7 +195,7 @@ const authentication = {
   service: 'identity-provider',
   entity: 'identity-provider',
   secret: process.env.AUTH_SECRET!,
-  authStrategies: ['jwt', 'local', 'facebook', 'github', 'google', 'linkedin', 'twitter'],
+  authStrategies: ['jwt', 'local', 'discord', 'facebook', 'github', 'google', 'linkedin', 'twitter'],
   local: {
     usernameField: 'email',
     passwordField: 'password'
@@ -175,6 +207,7 @@ const authentication = {
     numBytes: 16
   },
   callback: {
+    discord: process.env.DISCORD_CALLBACK_URL || `${client.url}/auth/oauth/discord`,
     facebook: process.env.FACEBOOK_CALLBACK_URL || `${client.url}/auth/oauth/facebook`,
     github: process.env.GITHUB_CALLBACK_URL || `${client.url}/auth/oauth/github`,
     google: process.env.GOOGLE_CALLBACK_URL || `${client.url}/auth/oauth/google`,
@@ -188,6 +221,14 @@ const authentication = {
           ? server.hostname
           : server.hostname + ':' + server.port,
       protocol: 'https'
+    },
+    discord: {
+      key: process.env.DISCORD_CLIENT_ID!,
+      secret: process.env.DISCORD_CLIENT_SECRET!,
+      scope: ['identify', 'email'],
+      custom_params: {
+        prompt: 'none'
+      }
     },
     facebook: {
       key: process.env.FACEBOOK_CLIENT_ID!,
@@ -232,6 +273,7 @@ const aws = {
   },
   s3: {
     baseUrl: 'https://s3.amazonaws.com',
+    endpoint: process.env.STORAGE_S3_ENDPOINT!,
     staticResourceBucket: process.env.STORAGE_S3_STATIC_RESOURCE_BUCKET!,
     region: process.env.STORAGE_S3_REGION!,
     avatarDir: process.env.STORAGE_S3_AVATAR_DIRECTORY!,

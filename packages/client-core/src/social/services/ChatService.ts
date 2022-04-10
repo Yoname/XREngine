@@ -1,30 +1,28 @@
-import { store, useDispatch } from '../../store'
-import { client } from '../../feathers'
-import waitForClientAuthenticated from '../../util/wait-for-client-authenticated'
+import { Paginated } from '@feathersjs/feathers'
+import { createState, none, useState } from '@speigg/hookstate'
 
-import { AlertService } from '../../common/services/AlertService'
-
-import { Config } from '@xrengine/common/src/config'
-
-import { accessAuthState } from '../../user/services/AuthService'
-import { accessInstanceConnectionState } from '../../common/services/InstanceConnectionService'
-import { Message } from '@xrengine/common/src/interfaces/Message'
-import { MessageResult } from '@xrengine/common/src/interfaces/MessageResult'
 import { Channel } from '@xrengine/common/src/interfaces/Channel'
-import { ChannelResult } from '@xrengine/common/src/interfaces/ChannelResult'
+import { Group } from '@xrengine/common/src/interfaces/Group'
+import { Instance } from '@xrengine/common/src/interfaces/Instance'
+import { Message } from '@xrengine/common/src/interfaces/Message'
+import { Party } from '@xrengine/common/src/interfaces/Party'
+import { User } from '@xrengine/common/src/interfaces/User'
 import { handleCommand, isCommand } from '@xrengine/engine/src/common/functions/commandHandler'
 import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
-import { isBot } from '@xrengine/engine/src/common/functions/isBot'
 import { isPlayerLocal } from '@xrengine/engine/src/networking/utils/isPlayerLocal'
 
-import { createState, useState, none } from '@hookstate/core'
-
-import _ from 'lodash'
-import { User } from '@xrengine/common/src/interfaces/User'
-import { Group } from '@xrengine/common/src/interfaces/Group'
-import { Party } from '@xrengine/common/src/interfaces/Party'
-import { Instance } from '@xrengine/common/src/interfaces/Instance'
+import { AlertService } from '../../common/services/AlertService'
+import { accessLocationInstanceConnectionState } from '../../common/services/LocationInstanceConnectionService'
+import { client } from '../../feathers'
+import { store, useDispatch } from '../../store'
+import { accessAuthState } from '../../user/services/AuthService'
 import { getChatMessageSystem, hasSubscribedToChatSystem, removeMessageSystem } from './utils/chatSystem'
+
+interface ChatMessageProps {
+  targetObjectId: string
+  targetObjectType: string
+  text: string
+}
 
 //State
 
@@ -64,7 +62,6 @@ store.receptors.push((action: ChatActionType) => {
           findIndex = s.channels.channels.findIndex((c) => c.id.value === action.channel.id)
         let idx = findIndex > -1 ? findIndex : s.channels.channels.length
         s.channels.channels[idx].set(action.channel)
-
         if (action.channelType === 'instance') {
           const endedInstanceChannelIndex = s.channels.channels.findIndex(
             (channel) => channel.channelType.value === 'instance' && channel.id.value !== action.channel.id
@@ -224,63 +221,54 @@ globalThis.chatState = state
 export const ChatService = {
   getChannels: async (skip?: number, limit?: number) => {
     const dispatch = useDispatch()
-    {
-      try {
-        await waitForClientAuthenticated()
-        const chatState = accessChatState().value
+    try {
+      const chatState = accessChatState().value
 
-        const channelResult = await client.service('channel').find({
-          query: {
-            $limit: limit != null ? limit : chatState.channels.limit,
-            $skip: skip != null ? skip : chatState.channels.skip
-          }
-        })
-        dispatch(ChatAction.loadedChannels(channelResult))
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+      const channelResult = (await client.service('channel').find({
+        query: {
+          $limit: limit != null ? limit : chatState.channels.limit,
+          $skip: skip != null ? skip : chatState.channels.skip
+        }
+      })) as Paginated<Channel>
+      dispatch(ChatAction.loadedChannels(channelResult))
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
   getInstanceChannel: async () => {
     const dispatch = useDispatch()
-    {
-      try {
-        const channelResult = await client.service('channel').find({
-          query: {
-            channelType: 'instance',
-            instanceId: accessInstanceConnectionState().instance.id.value
-          }
-        })
-        if (channelResult.total === 0) return setTimeout(() => ChatService.getInstanceChannel(), 2000)
-        dispatch(ChatAction.loadedChannel(channelResult.data[0], 'instance'))
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+    try {
+      const channelResult = (await client.service('channel').find({
+        query: {
+          channelType: 'instance',
+          instanceId: accessLocationInstanceConnectionState().instance.id.value
+        }
+      })) as Paginated<Channel>
+      if (channelResult.total === 0) return setTimeout(() => ChatService.getInstanceChannel(), 2000)
+      dispatch(ChatAction.loadedChannel(channelResult.data[0], 'instance'))
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
-  createMessage: async (values: any) => {
-    const dispatch = useDispatch()
-    {
-      try {
-        await waitForClientAuthenticated()
-        const chatState = accessChatState().value
-        const data = {
-          targetObjectId: chatState.targetObjectId || values.targetObjectId || '',
-          targetObjectType: chatState.targetObjectType || values.targetObjectType || 'party',
-          text: values.text
-        }
-        if (data.targetObjectId === null || data.targetObjectType === null) {
-          console.log('invalid data, something is null: ')
-          console.log(data)
-          return
-        }
-        await client.service('message').create(data)
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
+  createMessage: async (values: ChatMessageProps) => {
+    try {
+      const chatState = accessChatState().value
+      const data = {
+        targetObjectId: chatState.targetObjectId || values.targetObjectId || '',
+        targetObjectType: chatState.targetObjectType || values.targetObjectType || 'party',
+        text: values.text
       }
+      if (data.targetObjectId === null || data.targetObjectType === null) {
+        console.log('invalid data, something is null: ')
+        console.log(data)
+        return
+      }
+      await client.service('message').create(data)
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
-  sendChatMessage: (values: any) => {
+  sendChatMessage: (values: ChatMessageProps) => {
     try {
       client.service('message').create({
         targetObjectId: values.targetObjectId,
@@ -293,18 +281,20 @@ export const ChatService = {
   },
   sendMessage: (text: string) => {
     const user = accessAuthState().user.value
-    ChatService.sendChatMessage({
-      targetObjectId: user.instanceId,
-      targetObjectType: 'instance',
-      text: text
-    })
+    if (user.instanceId && text) {
+      ChatService.sendChatMessage({
+        targetObjectId: user.instanceId,
+        targetObjectType: 'instance',
+        text: text
+      })
+    }
   },
   getChannelMessages: async (channelId: string, skip?: number, limit?: number) => {
     const dispatch = useDispatch()
     if (channelId && channelId.length > 0) {
       try {
         const chatState = accessChatState().value
-        const messageResult = await client.service('message').find({
+        const messageResult = (await client.service('message').find({
           query: {
             channelId: channelId,
             $sort: {
@@ -313,7 +303,7 @@ export const ChatService = {
             $limit: limit != null ? limit : chatState.channels.channels[channelId].limit,
             $skip: skip != null ? skip : chatState.channels.channels[channelId].skip
           }
-        })
+        })) as Paginated<Message>
         dispatch(ChatAction.loadedMessages(channelId, messageResult))
       } catch (err) {
         AlertService.dispatchAlertError(err)
@@ -321,75 +311,63 @@ export const ChatService = {
     }
   },
   removeMessage: async (messageId: string) => {
-    const dispatch = useDispatch()
-    {
-      try {
-        await client.service('message').remove(messageId)
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+    try {
+      await client.service('message').remove(messageId)
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
   patchMessage: async (messageId: string, text: string) => {
-    const dispatch = useDispatch()
-    {
-      try {
-        await client.service('message').patch(messageId, {
-          text: text
-        })
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+    try {
+      await client.service('message').patch(messageId, {
+        text: text
+      })
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
   updateChatTarget: async (targetObjectType: string, targetObject: any) => {
     const dispatch = useDispatch()
-    {
-      if (!targetObject) {
-        dispatch(ChatAction.setChatTarget(targetObjectType, targetObject, ''))
-      } else {
-        const targetChannelResult = await client.service('channel').find({
-          query: {
-            findTargetId: true,
-            targetObjectType: targetObjectType,
-            targetObjectId: targetObject.id
-          }
-        })
-        dispatch(
-          ChatAction.setChatTarget(
-            targetObjectType,
-            targetObject,
-            targetChannelResult.total > 0 ? targetChannelResult.data[0].id : ''
-          )
+    if (!targetObject) {
+      dispatch(ChatAction.setChatTarget(targetObjectType, targetObject, ''))
+    } else {
+      const targetChannelResult = (await client.service('channel').find({
+        query: {
+          findTargetId: true,
+          targetObjectType: targetObjectType,
+          targetObjectId: targetObject.id
+        }
+      })) as Paginated<Channel>
+      dispatch(
+        ChatAction.setChatTarget(
+          targetObjectType,
+          targetObject,
+          targetChannelResult.total > 0 ? targetChannelResult.data[0].id : ''
         )
-      }
+      )
     }
   },
   clearChatTargetIfCurrent: async (targetObjectType: string, targetObject: any) => {
     const dispatch = useDispatch()
-    {
-      const chatState = accessChatState().value
-      const chatStateTargetObjectType = chatState.targetObjectType
-      const chatStateTargetObjectId = chatState.targetObjectId
-      if (
-        targetObjectType === chatStateTargetObjectType &&
-        (targetObject.id === chatStateTargetObjectId ||
-          targetObject.relatedUserId === chatStateTargetObjectId ||
-          targetObject.userId === chatStateTargetObjectId)
-      ) {
-        dispatch(ChatAction.setChatTarget('', {}, ''))
-      }
+    const chatState = accessChatState().value
+    const chatStateTargetObjectType = chatState.targetObjectType
+    const chatStateTargetObjectId = chatState.targetObjectId
+    if (
+      targetObjectType === chatStateTargetObjectType &&
+      (targetObject.id === chatStateTargetObjectId ||
+        targetObject.relatedUserId === chatStateTargetObjectId ||
+        targetObject.userId === chatStateTargetObjectId)
+    ) {
+      dispatch(ChatAction.setChatTarget('', {}, ''))
     }
   },
   updateMessageScrollInit: async (value: boolean) => {
     const dispatch = useDispatch()
-    {
-      dispatch(ChatAction.setMessageScrollInit(value))
-    }
+    dispatch(ChatAction.setMessageScrollInit(value))
   }
 }
 
-if (!Config.publicRuntimeConfig.offlineMode) {
+if (globalThis.process.env['VITE_OFFLINE_MODE'] !== 'true') {
   client.service('message').on('created', (params) => {
     const selfUser = accessAuthState().user.value
     const { message } = params
@@ -400,16 +378,15 @@ if (!Config.publicRuntimeConfig.offlineMode) {
           const system = getChatMessageSystem(message.text)
           if (system !== 'none') {
             message.text = removeMessageSystem(message.text)
-            if (!isBot(window) && !Engine.isBot && !hasSubscribedToChatSystem(selfUser.id, system)) return
+            if (!Engine.isBot && !hasSubscribedToChatSystem(selfUser.id, system)) return
           }
         }
       } else {
         const system = getChatMessageSystem(message.text)
         if (system !== 'none') {
           message.text = removeMessageSystem(message.text)
-          if (!isBot(window) && !Engine.isBot && !Engine.isBot && !hasSubscribedToChatSystem(selfUser.id, system))
-            return
-        } else if (isCommand(message.text) && !Engine.isBot && !isBot(window)) return
+          if (!Engine.isBot && !hasSubscribedToChatSystem(selfUser.id, system)) return
+        } else if (isCommand(message.text) && !Engine.isBot) return
       }
     }
 
@@ -448,7 +425,7 @@ export const ChatAction = {
       channelType: channelFetchedType
     }
   },
-  loadedChannels: (channelResult: ChannelResult) => {
+  loadedChannels: (channelResult: Paginated<Channel>) => {
     return {
       type: 'LOADED_CHANNELS' as const,
       channels: channelResult.data,
@@ -476,7 +453,7 @@ export const ChatAction = {
       message: message
     }
   },
-  loadedMessages: (channelId: string, messageResult: MessageResult) => {
+  loadedMessages: (channelId: string, messageResult: Paginated<Message>) => {
     return {
       type: 'LOADED_MESSAGES' as const,
       messages: messageResult.data,

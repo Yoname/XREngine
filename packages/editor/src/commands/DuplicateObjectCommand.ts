@@ -1,101 +1,107 @@
-import Command, { CommandParams } from './Command'
-import { serializeObject3DArray, serializeObject3D } from '../functions/debug'
+import { store } from '@xrengine/client-core/src/store'
+import { EntityTreeNode } from '@xrengine/engine/src/ecs/classes/EntityTree'
+import { cloneEntityNode, getEntityNodeArrayFromEntities } from '@xrengine/engine/src/ecs/functions/EntityTreeFunctions'
+import { useWorld } from '@xrengine/engine/src/ecs/functions/SystemHooks'
+import { serializeWorld } from '@xrengine/engine/src/scene/functions/serializeWorld'
+
+import { executeCommand } from '../classes/History'
 import EditorCommands from '../constants/EditorCommands'
-import { CommandManager } from '../managers/CommandManager'
-import getDetachedObjectsRoots from '../functions/getDetachedObjectsRoots'
-import EditorEvents from '../constants/EditorEvents'
+import { serializeObject3D, serializeObject3DArray } from '../functions/debug'
+import { getDetachedObjectsRoots } from '../functions/getDetachedObjectsRoots'
+import { shouldNodeDeserialize } from '../functions/shouldDeserialiez'
+import { EditorAction } from '../services/EditorServices'
+import { accessSelectionState, SelectionAction } from '../services/SelectionServices'
+import Command, { CommandParams } from './Command'
 
 export interface DuplicateObjectCommandParams extends CommandParams {
   /** Parent object which will hold objects being added by this command */
-  parents?: any
+  parents?: EntityTreeNode | EntityTreeNode[]
 
   /** Child object before which all objects will be added */
-  befores?: any
+  befores?: EntityTreeNode | EntityTreeNode[]
 }
 
 export default class DuplicateObjectCommand extends Command {
-  parent: any
+  parents?: EntityTreeNode[]
 
-  before: any
+  befores?: EntityTreeNode[]
 
-  selectObjects: any
+  duplicatedObjects: EntityTreeNode[]
 
-  duplicatedObjects: any[]
-
-  constructor(objects?: any | any[], params?: DuplicateObjectCommandParams) {
+  constructor(objects: EntityTreeNode[], params: DuplicateObjectCommandParams) {
     super(objects, params)
 
-    if (!Array.isArray(objects)) {
-      objects = [objects]
-    }
-
-    this.affectedObjects = objects.slice(0)
-    this.parent = params.parents
-    this.before = params.befores
-    this.selectObjects = params.isObjectSelected
-    this.oldSelection = CommandManager.instance.selected.slice(0)
+    this.affectedObjects = objects.filter((o) => shouldNodeDeserialize(o))
+    this.parents = params.parents ? (Array.isArray(params.parents) ? params.parents : [params.parents]) : undefined
+    this.befores = params.befores ? (Array.isArray(params.befores) ? params.befores : [params.befores]) : undefined
     this.duplicatedObjects = []
+
+    if (this.keepHistory) {
+      this.oldSelection = accessSelectionState().selectedEntities.value.slice(0)
+    }
   }
 
   execute(isRedoCommand?: boolean) {
     if (isRedoCommand) {
-      CommandManager.instance.executeCommand(EditorCommands.ADD_OBJECTS, this.duplicatedObjects, {
-        parents: this.parent,
-        befores: this.before,
+      executeCommand(EditorCommands.ADD_OBJECTS, this.duplicatedObjects, {
+        parents: this.parents,
+        befores: this.befores,
         shouldEmitEvent: false,
         isObjectSelected: false
       })
     } else {
-      const validNodes = this.affectedObjects.filter((object) => object.constructor.canAddNode())
-      const roots = getDetachedObjectsRoots(validNodes)
-      this.duplicatedObjects = roots.map((object) => object.clone())
+      const roots = getDetachedObjectsRoots(this.affectedObjects)
+      this.duplicatedObjects = roots.map((object) => cloneEntityNode(object))
+      const sceneData = this.duplicatedObjects.map((obj) => serializeWorld(obj, true))
+      const tree = useWorld().entityTree
 
-      if (this.parent) {
-        CommandManager.instance.executeCommand(EditorCommands.ADD_OBJECTS, this.duplicatedObjects, {
-          parents: this.parent,
-          befores: this.before,
-          shouldEmitEvent: false,
-          isObjectSelected: false
-        })
-      } else {
-        for (let i = 0; i < roots.length; i++) {
-          CommandManager.instance.executeCommand(EditorCommands.ADD_OBJECTS, [this.duplicatedObjects[i]], {
-            parents: roots[i].parent,
-            shouldEmitEvent: false,
-            isObjectSelected: false
-          })
+      if (!this.parents) {
+        this.parents = []
+
+        for (let o of this.duplicatedObjects) {
+          if (!o.parentEntity) throw new Error('Parent is not defined')
+          const parent = tree.entityNodeMap.get(o.parentEntity)
+
+          if (!parent) throw new Error('Parent is not defined')
+          this.parents.push(parent)
         }
       }
 
-      if (this.isSelected) {
-        CommandManager.instance.executeCommand(EditorCommands.REPLACE_SELECTION, this.duplicatedObjects, {
-          shouldEmitEvent: false,
-          shouldGizmoUpdate: false
-        })
-      }
+      executeCommand(EditorCommands.ADD_OBJECTS, this.duplicatedObjects, {
+        parents: this.parents,
+        befores: this.befores,
+        shouldEmitEvent: false,
+        isObjectSelected: false,
+        sceneData
+      })
 
-      CommandManager.instance.updateTransformRoots()
+      if (this.isSelected) {
+        executeCommand(EditorCommands.REPLACE_SELECTION, this.duplicatedObjects)
+      }
     }
 
     this.emitAfterExecuteEvent()
   }
 
   undo() {
-    CommandManager.instance.executeCommand(EditorCommands.REMOVE_OBJECTS, this.duplicatedObjects, {
-      deselectObject: false
+    executeCommand(EditorCommands.REMOVE_OBJECTS, this.duplicatedObjects, {
+      deselectObject: false,
+      skipSerialization: true
     })
-    CommandManager.instance.executeCommand(EditorCommands.REPLACE_SELECTION, this.oldSelection)
+
+    executeCommand(EditorCommands.REPLACE_SELECTION, getEntityNodeArrayFromEntities(this.oldSelection))
   }
 
   toString() {
     return `DuplicateMultipleCommand id: ${this.id} objects: ${serializeObject3DArray(
       this.affectedObjects
-    )} parent: ${serializeObject3D(this.parent)} before: ${serializeObject3D(this.before)}`
+    )} parent: ${serializeObject3D(this.parents)} before: ${serializeObject3D(this.befores)}`
   }
 
   emitAfterExecuteEvent() {
     if (this.shouldEmitEvent) {
-      CommandManager.instance.emitEvent(EditorEvents.SCENE_GRAPH_CHANGED)
+      store.dispatch(EditorAction.sceneModified(true))
+      store.dispatch(SelectionAction.changedSceneGraph())
     }
   }
 }

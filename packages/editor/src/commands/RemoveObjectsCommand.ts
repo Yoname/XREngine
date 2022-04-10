@@ -1,101 +1,118 @@
-import i18n from 'i18next'
-import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
-import Command, { CommandParams } from './Command'
-import { serializeObject3DArray } from '../functions/debug'
+import { store } from '@xrengine/client-core/src/store'
+import { SceneJson } from '@xrengine/common/src/interfaces/SceneInterface'
+import { EntityTreeNode } from '@xrengine/engine/src/ecs/classes/EntityTree'
+import { removeEntity } from '@xrengine/engine/src/ecs/functions/EntityFunctions'
+import {
+  getEntityNodeArrayFromEntities,
+  removeEntityNodeFromParent,
+  traverseEntityNode
+} from '@xrengine/engine/src/ecs/functions/EntityTreeFunctions'
+import { useWorld } from '@xrengine/engine/src/ecs/functions/SystemHooks'
+import { serializeWorld } from '@xrengine/engine/src/scene/functions/serializeWorld'
+
+import { executeCommand } from '../classes/History'
 import EditorCommands from '../constants/EditorCommands'
-import { CommandManager } from '../managers/CommandManager'
-import EditorEvents from '../constants/EditorEvents'
-import { NodeManager } from '../managers/NodeManager'
+import { serializeObject3DArray } from '../functions/debug'
+import { filterParentEntities } from '../functions/filterParentEntities'
+import { EditorAction } from '../services/EditorServices'
+import { SelectionAction } from '../services/SelectionServices'
+import Command, { CommandParams } from './Command'
 
 export interface RemoveObjectCommandParams extends CommandParams {
   /** Whether to deselect object or not */
   deselectObject?: boolean
+
+  skipSerialization?: boolean
 }
 
 export default class RemoveObjectsCommand extends Command {
-  oldParents: any[]
+  undoObjects: EntityTreeNode[]
 
-  oldBefores: any[]
+  oldParents: EntityTreeNode[]
 
-  oldNodes: any
+  oldBefores: EntityTreeNode[]
 
   deselectObject?: boolean
 
-  constructor(objects?: any | any[], params?: RemoveObjectCommandParams) {
+  oldComponents: SceneJson[]
+
+  skipSerialization?: boolean
+
+  removedObjectCount: number
+
+  constructor(objects: EntityTreeNode[], params: RemoveObjectCommandParams) {
     super(objects, params)
 
-    this.affectedObjects = []
-    this.oldParents = []
-    this.oldBefores = []
-    this.oldNodes = NodeManager.instance.getCopy()
-    this.oldSelection = CommandManager.instance.selected.slice(0)
+    this.removedObjectCount = objects.length
+    this.skipSerialization = params.skipSerialization
     this.deselectObject = params.deselectObject
 
-    if (!Array.isArray(objects)) {
-      objects = [objects]
-    }
+    if (this.keepHistory) {
+      this.undoObjects = []
+      this.oldParents = []
+      this.oldBefores = []
+      this.oldComponents = []
+      const tree = useWorld().entityTree
 
-    // Sort objects, parents, and befores with a depth first search so that undo adds nodes in the correct order
-    Engine.scene.traverse((object) => {
-      if (objects.indexOf(object) !== -1) {
-        this.affectedObjects.push(object)
-        this.oldParents.push(object.parent)
-        if (object.parent) {
-          const siblings = object.parent.children
-          const index = siblings.indexOf(object)
-          if (index + 1 < siblings.length) {
-            this.oldBefores.push(siblings[index + 1])
-          } else {
-            this.oldBefores.push(undefined)
-          }
+      for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i]
+        this.undoObjects.push(obj)
+
+        if (obj.parentEntity) {
+          const parent = tree.entityNodeMap.get(obj.parentEntity)
+          if (!parent) throw new Error('Parent is not defined')
+          this.oldParents.push(parent)
+
+          const before = tree.entityNodeMap.get(parent.children![parent.children!.indexOf(obj.entity) + 1])
+          this.oldBefores.push(before!)
         }
+
+        if (!this.skipSerialization) this.oldComponents.push(serializeWorld(obj))
       }
-    })
+    }
   }
 
   execute() {
     this.emitBeforeExecuteEvent()
 
-    const removeObjectsRoots = []
-    CommandManager.instance.getRootObjects(this.affectedObjects, removeObjectsRoots)
+    const removedObjectsRoots = getEntityNodeArrayFromEntities(
+      filterParentEntities(
+        this.affectedObjects.map((o) => o.entity),
+        undefined,
+        true,
+        false
+      )
+    )
 
-    for (let i = 0; i < removeObjectsRoots.length; i++) {
-      const object = removeObjectsRoots[i]
+    for (let i = 0; i < removedObjectsRoots.length; i++) {
+      const object = removedObjectsRoots[i]
+      if (!object.parentEntity) continue
 
-      if (object.parent === null) return null // avoid deleting the camera or scene
+      traverseEntityNode(object, (node) => removeEntity(node.entity))
+      removeEntityNodeFromParent(object)
+    }
 
-      object.traverse((child) => {
-        if (child.isNode) {
-          child.onRemove()
-          if (!NodeManager.instance.remove(child)) {
-            throw new Error(i18n.t('editor:errors.removeObject'))
-          }
-        }
+    if (this.deselectObject) {
+      executeCommand(EditorCommands.REMOVE_FROM_SELECTION, this.affectedObjects, {
+        shouldEmitEvent: this.shouldEmitEvent
       })
-
-      object.parent.remove(object)
-
-      if (this.deselectObject) {
-        CommandManager.instance.executeCommand(EditorCommands.REMOVE_FROM_SELECTION, object, {
-          shouldEmitEvent: this.shouldEmitEvent
-        })
-      }
     }
 
     this.emitAfterExecuteEvent()
   }
 
   undo() {
-    CommandManager.instance.executeCommand(EditorCommands.ADD_OBJECTS, this.affectedObjects, {
+    if (!this.undoObjects) return
+
+    executeCommand(EditorCommands.ADD_OBJECTS, this.undoObjects, {
       parents: this.oldParents,
       befores: this.oldBefores,
       isObjectSelected: this.isSelected,
-      useUniqueName: false
+      useUniqueName: false,
+      sceneData: this.oldComponents
     })
 
-    NodeManager.instance.fill(this.oldNodes)
-
-    CommandManager.instance.executeCommand(EditorCommands.REPLACE_SELECTION, this.oldSelection)
+    executeCommand(EditorCommands.REPLACE_SELECTION, this.affectedObjects)
   }
 
   toString() {
@@ -104,7 +121,8 @@ export default class RemoveObjectsCommand extends Command {
 
   emitAfterExecuteEvent() {
     if (this.shouldEmitEvent) {
-      CommandManager.instance.emitEvent(EditorEvents.SCENE_GRAPH_CHANGED)
+      store.dispatch(EditorAction.sceneModified(true))
+      store.dispatch(SelectionAction.changedSceneGraph())
     }
   }
 }

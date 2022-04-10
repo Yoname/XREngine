@@ -1,21 +1,78 @@
-import React from 'react'
-import Search from './SearchInstance'
+import React, { useEffect } from 'react'
+
+import Button from '@mui/material/Button'
+import Grid from '@mui/material/Grid'
+
+import AlertMessage from '../../common/AlertMessage'
+import Search from '../../common/Search'
+import { useGameserverState } from '../../services/GameserverService'
+import styles from '../../styles/admin.module.scss'
 import InstanceTable from './InstanceTable'
-import { useInstanceStyles } from './styles'
+import PatchGameserver from './PatchGameserver'
 
 const Instance = () => {
-  const classes = useInstanceStyles()
+  const [search, setSearch] = React.useState('')
+  const [patchGameserverOpen, setPatchGameserverOpen] = React.useState(false)
+  const [openAlert, setOpenAlert] = React.useState(false)
+  const gameserverState = useGameserverState()
+  const { patch } = gameserverState.value
+
+  useEffect(() => {
+    if (patch) {
+      setOpenAlert(true)
+    }
+  }, [gameserverState.patch])
+
+  const openPatchModal = (open: boolean) => (event: React.KeyboardEvent | React.MouseEvent) => {
+    if (
+      event.type === 'keydown' &&
+      ((event as React.KeyboardEvent).key === 'Tab' || (event as React.KeyboardEvent).key === 'Shift')
+    ) {
+      return
+    }
+    setPatchGameserverOpen(open)
+  }
+
+  const closePatchModal = (open: boolean) => {
+    setPatchGameserverOpen(open)
+  }
+
+  const handleCloseAlert = (event?: React.SyntheticEvent | Event, reason?: string) => {
+    if (reason === 'clickaway') {
+      return
+    }
+    setOpenAlert(false)
+  }
+
+  const handleChange = (e: any) => {
+    setSearch(e.target.value)
+  }
 
   return (
-    <div>
-      <div className={classes.marginBottm}>
-        <Search />
+    <React.Fragment>
+      <Grid container spacing={3} className={styles.mb10px}>
+        <Grid item xs={9}>
+          <Search text="instance" handleChange={handleChange} />
+        </Grid>
+        <Grid item xs={3}>
+          <Button className={styles.openModalBtn} type="submit" variant="contained" onClick={openPatchModal(true)}>
+            Patch Gameserver
+          </Button>
+        </Grid>
+      </Grid>
+      <div className={styles.rootTableWithSearch}>
+        <InstanceTable search={search} />
       </div>
-
-      <div className={classes.rootTable}>
-        <InstanceTable />
-      </div>
-    </div>
+      {patchGameserverOpen && <PatchGameserver open handleClose={openPatchModal} closeViewModal={closePatchModal} />}
+      {patch && openAlert && (
+        <AlertMessage
+          open
+          handleClose={handleCloseAlert}
+          severity={patch.status === true ? 'success' : 'warning'}
+          message={patch.message}
+        />
+      )}
+    </React.Fragment>
   )
 }
 

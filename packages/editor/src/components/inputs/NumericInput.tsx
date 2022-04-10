@@ -1,10 +1,12 @@
-import React from 'react'
 import PropTypes from 'prop-types'
-import styled from 'styled-components'
-import { getStepSize, toPrecision } from '../../functions/utils'
-import { clamp } from '@xrengine/engine/src/common/functions/MathLerpFunctions'
+import React, { useEffect } from 'react'
 import { useRef } from 'react'
 import { useState } from 'react'
+import styled from 'styled-components'
+
+import { clamp } from '@xrengine/engine/src/common/functions/MathLerpFunctions'
+
+import { getStepSize, toPrecision } from '../../functions/utils'
 
 /**
  *
@@ -37,37 +39,44 @@ const NumericInputContainer = (styled as any).div`
   position: relative;
   display: flex;
   flex: 1;
-  max-width: 100px;
+  background-color: var(--inputBackground);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  height: 24px;
+  overflow: hidden;
+
+  &:hover {
+    border-color: var(--blueHover);
+  }
+
+  &:focus, &:focus-visible, &:focus-within {
+    border-color: var(--blue);
+  }
+
+  &:disabled {
+    background-color: var(--disabled);
+    color: var(--disabledText);
+  }
 `
 
 /**
  * @author Robert Long
  */
 const StyledNumericInput = (styled as any).input`
-  display: flex;
-  width: 100%;
-  color: ${(props) => props.theme.text};
-  background-color: ${(props) => props.theme.inputBackground};
-  border-radius: 4px;
-  border: 1px solid ${(props) => props.theme.border};
-  padding-left: 6px;
+  color: var(--text);
+  background-color: var(--inputBackground);
+  border: none;
   font-size: 12px;
-  height: 24px;
+  height: 22px;
   box-sizing: border-box;
   outline: none;
-  padding-right: ${(props) => (props.unit ? props.unit.length * 6 + 10 + 'px' : 0)};
-
-  &:hover {
-    border-color: ${(props) => props.theme.blueHover};
-  }
-
-  &:focus {
-    border-color: ${(props) => props.theme.blue};
-  }
+  padding: 0 4px;
+  flex-grow: 1;
+  min-width: 0;
 
   &:disabled {
-    background-color: ${(props) => props.theme.disabled};
-    color: ${(props) => props.theme.disabledText};
+    background-color: var(--disabled);
+    color: var(--disabledText);
   }
 `
 
@@ -75,26 +84,23 @@ const StyledNumericInput = (styled as any).input`
  * @author Robert Long
  */
 const NumericInputUnit = (styled as any).div`
-  position: absolute;
-  color: ${(props) => props.theme.text2};
-  right: 1px;
-  top: 1px;
-  bottom: 1px;
-  background-color: ${(props) => props.theme.inputBackground};
-  padding: 0 4px;
+  color: var(--text2);
+  background-color: var(--inputBackground);
+  padding-right: 4px;
   border-top-right-radius: 4px;
   border-bottom-right-radius: 4px;
   line-height: 20px;
-  height: 22px;
+  height: 100%;
 `
 
 interface NumericInputProp {
   className?: any
   unit?: any
+  prefix?: any
   displayPrecision?: any
   value?: any
   convertFrom?: any
-  precision?: any
+  precision?: number
   mediumStep?: number
   onChange?: Function
   onCommit?: Function
@@ -109,31 +115,31 @@ interface NumericInputProp {
  * @author Robert Long
  */
 const NumericInput = (props: NumericInputProp) => {
-  const [tempValue, setTempValue] = useState(null)
+  const [tempValue, setTempValue] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
-  const inputEl = useRef(null)
+  const inputEl = useRef<HTMLInputElement>(null)
 
   const handleStep = (event, direction, focus = true) => {
     const { smallStep, mediumStep, largeStep, min, max, precision, convertTo, onChange, onCommit } = props
 
     const stepSize = event ? getStepSize(event, smallStep, mediumStep, largeStep) : mediumStep
 
-    const nextValue = parseFloat(inputEl?.current?.value ?? 0) + stepSize * direction
-    const clampedValue = clamp(nextValue, min, max)
+    const nextValue = parseFloat(inputEl?.current?.value ?? '0') + stepSize * direction
+    const clampedValue = min != null && max != null ? clamp(nextValue, min, max) : nextValue
     const roundedValue = precision ? toPrecision(clampedValue, precision) : nextValue
     const finalValue = convertTo(roundedValue)
 
     if (onCommit) {
       onCommit(finalValue)
     } else {
-      onChange(finalValue)
+      onChange?.(finalValue)
     }
 
     setTempValue(
       roundedValue.toLocaleString('fullwide', {
         useGrouping: false,
         minimumFractionDigits: 0,
-        maximumFractionDigits: Math.abs(Math.log10(precision)) + 1
+        maximumFractionDigits: Math.abs(Math.log10(precision || 0)) + 1
       })
     )
     setFocused(focus)
@@ -180,10 +186,10 @@ const NumericInput = (props: NumericInputProp) => {
     const parsedValue = parseFloat(tempValue)
 
     if (!Number.isNaN(parsedValue)) {
-      const clampedValue = clamp(parsedValue, min, max)
+      const clampedValue = min != null && max != null ? clamp(parsedValue, min, max) : parsedValue
       const roundedValue = precision ? toPrecision(clampedValue, precision) : clampedValue
       const finalValue = convertTo(roundedValue)
-      onChange(finalValue)
+      onChange?.(finalValue)
     }
   }
 
@@ -194,13 +200,15 @@ const NumericInput = (props: NumericInputProp) => {
       convertFrom(value).toLocaleString('fullwide', {
         useGrouping: false,
         minimumFractionDigits: 0,
-        maximumFractionDigits: Math.abs(Math.log10(precision)) + 1
+        maximumFractionDigits: Math.abs(Math.log10(precision || 0)) + 1
       })
     )
     setFocused(true)
-
-    inputEl?.current?.select()
   }
+
+  useEffect(() => {
+    if (focused) inputEl?.current?.select()
+  }, [focused])
 
   const handleBlur = () => {
     const { value, onCommit, onChange } = props
@@ -211,7 +219,7 @@ const NumericInput = (props: NumericInputProp) => {
     if (onCommit) {
       onCommit(value)
     } else {
-      onChange(value)
+      onChange?.(value)
     }
   }
 
@@ -229,15 +237,17 @@ const NumericInput = (props: NumericInputProp) => {
     convertFrom,
     onChange,
     onCommit,
+    prefix,
     ...rest
   } = props
 
   return (
     <NumericInputContainer>
+      {prefix ? prefix : null}
       <StyledNumericInput
         {...rest}
         unit={unit}
-        innerRef={inputEl}
+        ref={inputEl}
         value={focused ? tempValue : toPrecisionString(convertFrom(value), displayPrecision)}
         onKeyUp={handleKeyPress}
         onKeyDown={handleKeyDown}

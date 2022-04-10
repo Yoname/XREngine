@@ -1,4 +1,7 @@
-import { DataTypes, Sequelize } from 'sequelize'
+import { DataTypes, Model, Sequelize } from 'sequelize'
+
+import { MatchUserInterface } from '@xrengine/common/src/dbmodels/MatchUser'
+
 import { Application } from '../../../declarations'
 
 /**
@@ -6,7 +9,7 @@ import { Application } from '../../../declarations'
  */
 export default (app: Application) => {
   const sequelizeClient: Sequelize = app.get('sequelizeClient')
-  const MatchUser = sequelizeClient.define(
+  const MatchUser = sequelizeClient.define<Model<MatchUserInterface>>(
     'match_user',
     {
       id: {
@@ -39,7 +42,7 @@ export default (app: Application) => {
   )
 
   ;(MatchUser as any).associate = (models: any): void => {
-    ;(MatchUser as any).belongsTo(models.user, { as: 'user', allowNull: false })
+    ;(MatchUser as any).belongsTo(models.user, { as: 'user', required: true })
   }
 
   return MatchUser

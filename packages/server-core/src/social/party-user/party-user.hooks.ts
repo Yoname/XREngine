@@ -1,31 +1,31 @@
-import * as authentication from '@feathersjs/authentication'
-import partyPermissionAuthenticate from '@xrengine/server-core/src/hooks/party-permission-authenticate'
-import partyUserPermissionAuthenticate from '@xrengine/server-core/src/hooks/party-user-permission-authenticate'
 import { HookContext } from '@feathersjs/feathers'
 import { disallow, iff, isProvider } from 'feathers-hooks-common'
-import unsetSelfPartyOwner from '@xrengine/server-core/src/hooks/unset-self-party-owner'
+
 import checkPartyInstanceSize from '@xrengine/server-core/src/hooks/check-party-instance-size'
-import { extractLoggedInUserFromParams } from '../../user/auth-management/auth-management.utils'
+import partyPermissionAuthenticate from '@xrengine/server-core/src/hooks/party-permission-authenticate'
+import partyUserPermissionAuthenticate from '@xrengine/server-core/src/hooks/party-user-permission-authenticate'
+import unsetSelfPartyOwner from '@xrengine/server-core/src/hooks/unset-self-party-owner'
+
+import authenticate from '../../hooks/authenticate'
 import logger from '../../logger'
+import { UserDataType } from '../../user/user/user.class'
 
 // Don't remove this comment. It's needed to format import lines nicely.
 
-const { authenticate } = authentication.hooks
-
 export default {
   before: {
-    all: [authenticate('jwt')],
+    all: [authenticate()],
     find: [iff(isProvider('external'), partyUserPermissionAuthenticate() as any)],
     get: [],
     create: [
       async (context: HookContext): Promise<HookContext> => {
         try {
           const { app, params, data } = context
-          const loggedInUser = extractLoggedInUserFromParams(params)
-          const user = await app.service('user').get(loggedInUser.userId)
+          const loggedInUser = params!.user as UserDataType
+          const user = await app.service('user').get(loggedInUser.id!)
           const partyUserResult = await app.service('party-user').find({
             query: {
-              userId: loggedInUser.userId
+              userId: loggedInUser.id
             }
           })
 
@@ -36,7 +36,7 @@ export default {
           )
 
           if (data.userId == null) {
-            data.userId = loggedInUser.userId
+            data.userId = loggedInUser.id
           }
           context.params.oldInstanceId = user.instanceId
           return context

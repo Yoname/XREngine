@@ -1,12 +1,12 @@
-import { store, useDispatch } from '../../store'
-import { client } from '../../feathers'
-import { AlertService } from '../../common/services/AlertService'
-import { Config } from '@xrengine/common/src/config'
-import { accessAuthState } from '../../user/services/AuthService'
+import { Paginated } from '@feathersjs/feathers'
+import { createState, useState } from '@speigg/hookstate'
 
-import { createState, useState } from '@hookstate/core'
 import { Instance } from '@xrengine/common/src/interfaces/Instance'
-import { InstanceResult } from '@xrengine/common/src/interfaces/InstanceResult'
+
+import { AlertService } from '../../common/services/AlertService'
+import { client } from '../../feathers'
+import { store, useDispatch } from '../../store'
+import { accessAuthState } from '../../user/services/AuthService'
 
 //State
 
@@ -38,11 +38,7 @@ store.receptors.push((action: InstanceActionType): any => {
           lastFetched: Date.now()
         })
       case 'INSTANCE_REMOVED_ROW':
-        let instance = state.instances.value
-        let instanceList = instance
-        instanceList = instanceList.filter((instance) => instance.id !== action.instance.id)
-        instance = instanceList
-        s.merge({ instances: instance })
+        s.merge({ updateNeeded: true })
     }
   }, action.type)
 })
@@ -53,43 +49,41 @@ export const useInstanceState = () => useState(state) as any as typeof state
 
 //Service
 export const InstanceService = {
-  fetchAdminInstances: async (incDec?: 'increment' | 'decrement') => {
+  fetchAdminInstances: async (value: string | null = null, skip = 0, sortField = 'createdAt', orderBy = 'asc') => {
     const dispatch = useDispatch()
-    {
-      const skip = accessInstanceState().skip.value
-      const limit = accessInstanceState().limit.value
-      const user = accessAuthState().user
-      try {
-        if (user.userRole.value === 'admin') {
-          const instances = await client.service('instance').find({
-            query: {
-              $sort: {
-                createdAt: -1
-              },
-              $skip: incDec === 'increment' ? skip + limit : incDec === 'decrement' ? skip - limit : skip,
-              $limit: limit,
-              action: 'admin'
-            }
-          })
-          dispatch(InstanceAction.instancesRetrievedAction(instances))
+    const user = accessAuthState().user
+    try {
+      if (user.userRole.value === 'admin') {
+        let sortData = {}
+        if (sortField.length > 0) {
+          sortData[sortField] = orderBy === 'desc' ? 0 : 1
         }
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
+        const instances = (await client.service('instance').find({
+          query: {
+            $sort: {
+              ...sortData
+            },
+            $skip: skip * INSTNCE_PAGE_LIMIT,
+            $limit: INSTNCE_PAGE_LIMIT,
+            action: 'admin',
+            search: value
+          }
+        })) as Paginated<Instance>
+        dispatch(InstanceAction.instancesRetrievedAction(instances))
       }
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
   removeInstance: async (id: string) => {
     const dispatch = useDispatch()
-    {
-      const result = await client.service('instance').patch(id, {
-        ended: true
-      })
-      dispatch(InstanceAction.instanceRemovedAction(result))
-    }
+
+    const result = (await client.service('instance').patch(id, { ended: true })) as Instance
+    dispatch(InstanceAction.instanceRemovedAction(result))
   }
 }
 
-if (!Config.publicRuntimeConfig.offlineMode) {
+if (globalThis.process.env['VITE_OFFLINE_MODE'] !== 'true') {
   client.service('instance').on('removed', (params) => {
     store.dispatch(InstanceAction.instanceRemovedAction(params.instance))
   })
@@ -97,7 +91,7 @@ if (!Config.publicRuntimeConfig.offlineMode) {
 
 //Action
 export const InstanceAction = {
-  instancesRetrievedAction: (instanceResult: InstanceResult) => {
+  instancesRetrievedAction: (instanceResult: Paginated<Instance>) => {
     return {
       type: 'INSTANCES_RETRIEVED' as const,
       instanceResult: instanceResult

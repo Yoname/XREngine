@@ -1,44 +1,44 @@
-import Command, { CommandParams } from './Command'
+import { Euler, Quaternion } from 'three'
+
+import { store } from '@xrengine/client-core/src/store'
+import { EntityTreeNode } from '@xrengine/engine/src/ecs/classes/EntityTree'
+import { getComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { Object3DComponent } from '@xrengine/engine/src/scene/components/Object3DComponent'
 import { TransformSpace } from '@xrengine/engine/src/scene/constants/transformConstants'
+import { TransformComponent } from '@xrengine/engine/src/transform/components/TransformComponent'
+
 import arrayShallowEqual from '../functions/arrayShallowEqual'
-import { serializeObject3DArray, serializeEuler } from '../functions/debug'
-import { Matrix4, Quaternion, Vector3 } from 'three'
-import EditorEvents from '../constants/EditorEvents'
-import { CommandManager } from '../managers/CommandManager'
+import { serializeEuler, serializeObject3DArray } from '../functions/debug'
+import { EditorAction } from '../services/EditorServices'
+import { accessSelectionState, SelectionAction } from '../services/SelectionServices'
+import Command, { CommandParams, IDENTITY_MAT_4 } from './Command'
 
 export interface RotationCommandParams extends CommandParams {
-  rotations?: Vector3 | Vector3[]
+  rotations: Euler | Euler[]
 
-  space?: any
+  space?: TransformSpace
 }
 
 export default class RotationCommand extends Command {
-  rotations: Vector3[]
+  rotations: Euler[]
 
-  space: any
+  space: TransformSpace
 
-  oldRotations: any
+  oldRotations?: Euler[]
 
-  constructor(objects?: any | any[], params?: RotationCommandParams) {
+  constructor(objects: EntityTreeNode[], params: RotationCommandParams) {
     super(objects, params)
 
-    if (!Array.isArray(objects)) {
-      objects = [objects]
-    }
-
-    if (!Array.isArray(params.rotations)) {
-      params.rotations = [params.rotations]
-    }
-
-    this.affectedObjects = objects.slice(0)
-    this.rotations = params.rotations.map((r) => r.clone())
+    this.rotations = Array.isArray(params.rotations) ? params.rotations : [params.rotations]
     this.space = params.space ?? TransformSpace.Local
-    this.oldRotations = objects.map((o) => o.rotation.clone())
+
+    if (this.keepHistory) {
+      this.oldRotations = objects.map((o) => getComponent(o.entity, Object3DComponent).value.rotation.clone())
+    }
   }
 
   execute() {
     this.updateRotation(this.affectedObjects, this.rotations, this.space)
-
     this.emitAfterExecuteEvent()
   }
 
@@ -48,11 +48,12 @@ export default class RotationCommand extends Command {
 
   update(command) {
     this.rotations = command.rotations
-    this.updateRotation(this.affectedObjects, command.rotations, this.space)
-    this.emitAfterExecuteEvent()
+    this.execute()
   }
 
   undo() {
+    if (!this.oldRotations) return
+
     this.updateRotation(this.affectedObjects, this.oldRotations, this.space)
     this.emitAfterExecuteEvent()
   }
@@ -65,48 +66,46 @@ export default class RotationCommand extends Command {
 
   emitAfterExecuteEvent() {
     if (this.shouldEmitEvent) {
-      CommandManager.instance.emitEvent(EditorEvents.OBJECTS_CHANGED, this.affectedObjects, 'rotation')
+      store.dispatch(EditorAction.sceneModified(true))
+      store.dispatch(SelectionAction.changedObject(this.affectedObjects, 'rotation'))
     }
   }
 
-  updateRotation(objects: any[], rotations: any[], space: any): void {
-    const tempMatrix = new Matrix4()
-    const tempQuaternion1 = new Quaternion()
-    const tempQuaternion2 = new Quaternion()
-
-    let spaceMatrix
+  updateRotation(objects: EntityTreeNode[], rotations: Euler[], space: TransformSpace): void {
+    const T_QUAT_1 = new Quaternion()
+    const T_QUAT_2 = new Quaternion()
+    let spaceMatrix = IDENTITY_MAT_4
 
     if (space === TransformSpace.LocalSelection) {
-      if (CommandManager.instance.selected.length > 0) {
-        const lastSelectedObject = CommandManager.instance.selected[CommandManager.instance.selected.length - 1]
-        lastSelectedObject.updateMatrixWorld()
-        spaceMatrix = lastSelectedObject.parent.matrixWorld
-      } else {
-        spaceMatrix = tempMatrix.identity()
+      const selectedEntities = accessSelectionState().selectedEntities.value
+
+      if (selectedEntities.length > 0) {
+        const lastSelectedEntity = selectedEntities[selectedEntities.length - 1]
+        const obj3d = getComponent(lastSelectedEntity, Object3DComponent).value
+        obj3d.updateMatrixWorld()
+        spaceMatrix = obj3d.parent!.matrixWorld
       }
     }
 
     for (let i = 0; i < objects.length; i++) {
       const object = objects[i]
+      const obj3d = getComponent(object.entity, Object3DComponent).value
+      const transformComponent = getComponent(object.entity, TransformComponent)
 
-      const rot = rotations[i] ?? rotations[0]
+      T_QUAT_1.setFromEuler(rotations[i] ?? rotations[0])
 
       if (space === TransformSpace.Local) {
-        object.rotation.copy(rot)
+        transformComponent.rotation.copy(T_QUAT_1)
       } else {
-        object.updateMatrixWorld() // Update parent world matrices
+        obj3d.updateMatrixWorld() // Update parent world matrices
 
-        let _spaceMatrix = space === TransformSpace.World ? object.parent.matrixWorld : spaceMatrix
+        const _spaceMatrix = space === TransformSpace.World ? obj3d.parent!.matrixWorld : spaceMatrix
 
-        const newWorldQuaternion = tempQuaternion1.setFromEuler(rot)
-        const inverseParentWorldQuaternion = tempQuaternion2.setFromRotationMatrix(_spaceMatrix).inverse()
-        const newLocalQuaternion = inverseParentWorldQuaternion.multiply(newWorldQuaternion)
-        object.quaternion.copy(newLocalQuaternion)
+        const inverseParentWorldQuaternion = T_QUAT_2.setFromRotationMatrix(_spaceMatrix).invert()
+        const newLocalQuaternion = inverseParentWorldQuaternion.multiply(T_QUAT_1)
+
+        transformComponent.rotation.copy(newLocalQuaternion)
       }
-
-      object.updateMatrixWorld(true)
-
-      object.onChange('rotation')
     }
   }
 }

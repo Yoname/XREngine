@@ -1,29 +1,30 @@
+import { ConfirmProvider } from 'material-ui-confirm'
+import React, { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import AppBar from '@mui/material/AppBar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Grid from '@mui/material/Grid'
 import { Theme } from '@mui/material/styles'
-import makeStyles from '@mui/styles/makeStyles'
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
-import { ConfirmProvider } from 'material-ui-confirm'
-import React, { useEffect } from 'react'
-import { InviteService } from '../../../social/services/InviteService'
-import { useInviteState } from '../../../social/services/InviteService'
-import { useDispatch } from '../../../store'
+import makeStyles from '@mui/styles/makeStyles'
+
+import { InviteService, useInviteState } from '../../../social/services/InviteService'
 import { useAuthState } from '../../../user/services/AuthService'
-import { UserService } from '../../services/UserService'
-import { useUserState } from '../../services/UserService'
-import InviteModel from './InviteModel'
+import Search from '../../common/Search'
+import { UserService, useUserState } from '../../services/UserService'
+import styles from '../../styles/admin.module.scss'
+import InviteModal from './InviteModal'
 import ReceivedInvite from './ReceivedInvite'
-import Search from './searchInvites'
 import SentInvite from './SentInvite'
 import { inviteStyles } from './styles'
 
 interface TabPanelProps {
   children?: React.ReactNode
-  index: any
-  value: any
+  index: number
+  value: number
 }
 
 const TabPanel = (props: TabPanelProps) => {
@@ -41,46 +42,38 @@ const TabPanel = (props: TabPanelProps) => {
     </div>
   )
 }
-const a11yProps = (index: any) => {
+const a11yProps = (index: number) => {
   return {
     id: `simple-tab-${index}`,
     'aria-controls': `simple-tabpanel-${index}`
   }
 }
 
-const useStyles = makeStyles((theme: Theme) => ({
-  root: {
-    flexGrow: 1,
-    backgroundColor: '#43484F !important'
-  },
-  marginBottom: {
-    marginBottom: '10px'
-  }
-}))
-
-interface Props {}
-
-const InvitesConsole = (props: Props) => {
+const InvitesConsole = () => {
   const classes = inviteStyles()
   const [refetch, setRefetch] = React.useState(false)
   const [value, setValue] = React.useState(0)
-  const [inviteModelOpen, setInviteModelOpen] = React.useState(false)
+  const [inviteModalOpen, setInviteModalOpen] = React.useState(false)
+  const [search, setSearch] = React.useState('')
 
   const inviteState = useInviteState()
 
   const invites = inviteState.sentInvites.invites
   const adminUserState = useUserState()
-  const adminUsers = adminUserState.users.users
+  const adminUsers = adminUserState.users
   const user = useAuthState().user
-  const dispatch = useDispatch()
+  const { t } = useTranslation()
+
   const handleChange = (event: React.ChangeEvent<{}>, newValue: number) => {
     setValue(newValue)
   }
-  const openModelInvite = () => {
-    setInviteModelOpen(true)
+
+  const openModalInvite = () => {
+    setInviteModalOpen(true)
   }
-  const closeModelInvite = () => {
-    setInviteModelOpen(false)
+
+  const closeModalInvite = () => {
+    setInviteModalOpen(false)
   }
 
   const fetchTick = () => {
@@ -95,11 +88,11 @@ const InvitesConsole = (props: Props) => {
   }, [])
 
   useEffect(() => {
-    if (user?.id.value != null && (adminUserState.users.updateNeeded.value === true || refetch === true)) {
+    if (user?.id.value != null && (adminUserState.updateNeeded.value === true || refetch)) {
       UserService.fetchUsersAsAdmin()
     }
     setRefetch(false)
-  }, [useAuthState(), adminUserState.users.updateNeeded.value, refetch])
+  }, [useAuthState(), adminUserState.updateNeeded.value, refetch])
 
   useEffect(() => {
     if (inviteState.sentUpdateNeeded.value === true) {
@@ -113,16 +106,20 @@ const InvitesConsole = (props: Props) => {
     }
   }, [inviteState.sentUpdateNeeded.value])
 
+  const handleSearchChange = (e: any) => {
+    setSearch(e.target.value)
+  }
+
   return (
     <div>
       <ConfirmProvider>
-        <Grid container spacing={3} className={classes.marginBottom}>
+        <Grid container spacing={3} className={styles.mb10px}>
           <Grid item xs={9}>
-            <Search />
+            <Search text="invite" handleChange={handleSearchChange} />
           </Grid>
           <Grid item xs={3}>
-            <Button variant="contained" className={classes.createBtn} type="submit" onClick={openModelInvite}>
-              Send Invite
+            <Button variant="contained" className={classes.createBtn} type="submit" onClick={openModalInvite}>
+              {t('admin:components.invite.sendInvite')}
             </Button>
           </Grid>
         </Grid>
@@ -134,19 +131,21 @@ const InvitesConsole = (props: Props) => {
               aria-label="simple tabs example"
               classes={{ indicator: classes.indicator }}
             >
-              <Tab label="Received Invite" {...a11yProps(0)} />
-              <Tab label="Sent Invite" {...a11yProps(1)} />
+              <Tab label={t('admin:components.invite.receivedInvite')} {...a11yProps(0)} />
+              <Tab label={t('admin:components.invite.sendInvite')} {...a11yProps(1)} />
             </Tabs>
           </AppBar>
-          <TabPanel value={value} index={0}>
-            <ReceivedInvite invites={[]} />
-          </TabPanel>
-          <TabPanel value={value} index={1}>
-            <SentInvite invites={invites.value} />
-          </TabPanel>
+          <>
+            <TabPanel value={value} index={0}>
+              <ReceivedInvite invites={[]} />
+            </TabPanel>
+            <TabPanel value={value} index={1}>
+              <SentInvite invites={invites.value} />
+            </TabPanel>
+          </>
         </div>
       </ConfirmProvider>
-      <InviteModel open={inviteModelOpen} handleClose={closeModelInvite} users={adminUsers.value} />
+      <InviteModal open={inviteModalOpen} handleClose={closeModalInvite} users={adminUsers.value} />
     </div>
   )
 }

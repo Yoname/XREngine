@@ -1,19 +1,4 @@
-import { Timer } from '@xrengine/engine/src/common/functions/Timer'
-import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
-import { System } from '@xrengine/engine/src/ecs/classes/System'
-import {
-  addComponent,
-  createMappedComponent,
-  getComponent
-} from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
-import { createEntity } from '@xrengine/engine/src/ecs/functions/EntityFunctions'
-import { registerSystem } from '@xrengine/engine/src/ecs/functions/SystemFunctions'
-import { SystemUpdateType } from '@xrengine/engine/src/ecs/functions/SystemUpdateType'
-import { OrbitControls } from '@xrengine/engine/src/input/functions/OrbitControls'
-import { createCellSpaceHelper } from '@xrengine/engine/src/navigation/CellSpacePartitioningHelper'
-import { CustomVehicle } from '@xrengine/engine/src/navigation/CustomVehicle'
-import { createConvexRegionHelper } from '@xrengine/engine/src/navigation/NavMeshHelper'
-import { PathPlanner } from '@xrengine/engine/src/navigation/PathPlanner'
+import { defineQuery } from 'bitecs'
 import React, { useEffect } from 'react'
 import {
   AmbientLight,
@@ -30,10 +15,25 @@ import {
   WebGLRenderer
 } from 'three'
 import { CellSpacePartitioning, EntityManager, FollowPathBehavior, Time } from 'yuka'
-import { defineQuery } from 'bitecs'
-import { Position, Polygon, MultiPolygon } from 'geojson'
-import { initializeEngine } from '@xrengine/engine/src/initializeEngine'
+
+import { Engine } from '@xrengine/engine/src/ecs/classes/Engine'
+import { Entity } from '@xrengine/engine/src/ecs/classes/Entity'
 import { World } from '@xrengine/engine/src/ecs/classes/World'
+import {
+  addComponent,
+  createMappedComponent,
+  getComponent
+} from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { createEntity } from '@xrengine/engine/src/ecs/functions/EntityFunctions'
+import { initSystems } from '@xrengine/engine/src/ecs/functions/SystemFunctions'
+import { useWorld } from '@xrengine/engine/src/ecs/functions/SystemHooks'
+import { SystemUpdateType } from '@xrengine/engine/src/ecs/functions/SystemUpdateType'
+import { createEngine } from '@xrengine/engine/src/initializeEngine'
+import { OrbitControls } from '@xrengine/engine/src/input/functions/OrbitControls'
+import { createCellSpaceHelper } from '@xrengine/engine/src/navigation/CellSpacePartitioningHelper'
+import { CustomVehicle } from '@xrengine/engine/src/navigation/CustomVehicle'
+import { createConvexRegionHelper } from '@xrengine/engine/src/navigation/NavMeshHelper'
+import { PathPlanner } from '@xrengine/engine/src/navigation/PathPlanner'
 
 type NavigationComponentType = {
   pathPlanner: PathPlanner
@@ -48,7 +48,7 @@ type NavigationComponentType = {
 
 const NavigationComponent = createMappedComponent<NavigationComponentType>('NavigationComponent')
 
-const RenderSystem = async (world: World): Promise<System> => {
+const RenderSystem = async (world: World) => {
   return () => {
     Engine.renderer.render(Engine.scene, Engine.camera)
     return world
@@ -71,26 +71,6 @@ const width = 100,
 const cellsX = 100,
   cellsY = 1,
   cellsZ = 100
-
-function scaleAndTranslatePosition(position: Position, llCenter: Position) {
-  return [(position[0] - llCenter[0]) * 1000, (position[1] - llCenter[1]) * 1000]
-}
-
-function scaleAndTranslatePolygon(coords: Position[][], llCenter: Position) {
-  return [coords[0].map((position) => scaleAndTranslatePosition(position, llCenter))]
-}
-function scaleAndTranslate(geometry: Polygon | MultiPolygon, llCenter: Position) {
-  switch (geometry.type) {
-    case 'MultiPolygon':
-      geometry.coordinates = geometry.coordinates.map((coords) => scaleAndTranslatePolygon(coords, llCenter))
-      break
-    case 'Polygon':
-      geometry.coordinates = scaleAndTranslatePolygon(geometry.coordinates, llCenter)
-      break
-  }
-
-  return geometry
-}
 
 const loadNavMeshFromMapBox = async (navigationComponent) => {
   // const builder = new NavMeshBuilder()
@@ -163,7 +143,7 @@ async function startDemo(entity) {
   }
 }
 
-export const NavigationSystem = async (world: World): Promise<System> => {
+export const NavigationSystem = async (world: World) => {
   const entity = createEntity()
   addComponent(entity, NavigationComponent, {
     pathPlanner: new PathPlanner(),
@@ -183,7 +163,7 @@ export const NavigationSystem = async (world: World): Promise<System> => {
     const { delta } = world
 
     for (const entity of navigationQuery(world)) {
-      const navComponent = getComponent(entity, NavigationComponent)
+      const navComponent = getComponent(entity as Entity, NavigationComponent)
 
       navComponent.entityManager.update(delta)
 
@@ -239,11 +219,18 @@ export const NavigationSystem = async (world: World): Promise<System> => {
 const Page = () => {
   useEffect(() => {
     ;(async function () {
-      await initializeEngine()
+      createEngine()
       // Register our systems to do stuff
-      registerSystem(SystemUpdateType.FIXED, Promise.resolve({ default: NavigationSystem }))
-      registerSystem(SystemUpdateType.UPDATE, Promise.resolve({ default: RenderSystem }))
-      await Engine.currentWorld.initSystems()
+      await initSystems(useWorld(), [
+        {
+          type: SystemUpdateType.FIXED,
+          systemModulePromise: Promise.resolve({ default: NavigationSystem })
+        },
+        {
+          type: SystemUpdateType.UPDATE,
+          systemModulePromise: Promise.resolve({ default: RenderSystem })
+        }
+      ])
 
       // Set up rendering and basic scene for demo
       const canvas = document.createElement('canvas')

@@ -1,8 +1,10 @@
+// @ts-nocheck
 import React, { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import { client } from '@xrengine/client-core/src/feathers'
 import { AuthService } from '@xrengine/client-core/src/user/services/AuthService'
-import { OpenMatchTicketAssignment } from '@xrengine/engine/tests/mathmaker/interfaces'
-import { Link } from 'react-router-dom'
+import { OpenMatchTicketAssignment } from '@xrengine/matchmaking/src/interfaces'
 
 const Page = () => {
   const [renderTrigger, updRenderTrigger] = useState<object>()
@@ -15,7 +17,7 @@ const Page = () => {
   console.log('RENDER', ticketsIds, connections)
 
   useEffect(() => {
-    AuthService.doLoginAuto(true)
+    AuthService.doLoginAuto()
   }, [])
 
   async function newTicket() {

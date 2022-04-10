@@ -1,25 +1,29 @@
 import { defineQuery } from 'bitecs'
 import {
-  Mesh,
-  Points,
-  SphereBufferGeometry,
+  ArrayCamera,
   BoxBufferGeometry,
-  PlaneBufferGeometry,
   BufferGeometry,
-  MeshBasicMaterial,
-  Vector3,
-  Matrix4,
-  Quaternion,
-  MeshStandardMaterial,
+  Float32BufferAttribute,
   Material,
-  Float32BufferAttribute
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  PlaneBufferGeometry,
+  Points,
+  Quaternion,
+  SphereBufferGeometry,
+  Vector3
 } from 'three'
+
 import { CapsuleBufferGeometry } from '../../common/classes/CapsuleBufferGeometry'
 import { Engine } from '../../ecs/classes/Engine'
 import { World } from '../../ecs/classes/World'
 import { getGeometryType, isControllerBody, isTriggerShape } from '../../physics/classes/Physics'
 import { RaycastComponent } from '../../physics/components/RaycastComponent'
 import { BodyType } from '../../physics/types/PhysicsTypes'
+import { ObjectLayers } from '../../scene/constants/ObjectLayers'
+import { setObjectLayers } from '../../scene/functions/setObjectLayers'
 
 const parentMatrix = new Matrix4()
 const childMatrix = new Matrix4()
@@ -32,15 +36,22 @@ const halfPI = Math.PI / 2
 
 const raycastQuery = defineQuery([RaycastComponent])
 
+export const getColorForBodyType = (bodyType: BodyType) => {
+  if (bodyType === BodyType.STATIC) return 0xff0000
+  if (bodyType === BodyType.DYNAMIC) return 0x00ff00
+  if (bodyType === BodyType.KINEMATIC) return 0x00aaff
+  if (bodyType === BodyType.CONTROLLER) return 0xffffff
+}
+
 export const DebugRenderer = () => {
   const _meshes: Map<number, any> = new Map<number, any>()
   const _obstacles: Map<number, any> = new Map<number, any>()
   const _raycasts: Map<number, any> = new Map<number, any>()
   const _materials: Material[] = [
-    new MeshBasicMaterial({ color: 0xff0000, wireframe: true }),
-    new MeshBasicMaterial({ color: 0x00ff00, wireframe: true }),
-    new MeshBasicMaterial({ color: 0x00aaff, wireframe: true }),
-    new MeshBasicMaterial({ color: 0xffffff, wireframe: true }),
+    new MeshBasicMaterial({ color: getColorForBodyType(0), wireframe: true }),
+    new MeshBasicMaterial({ color: getColorForBodyType(1), wireframe: true }),
+    new MeshBasicMaterial({ color: getColorForBodyType(2), wireframe: true }),
+    new MeshBasicMaterial({ color: getColorForBodyType(3), wireframe: true }),
     new MeshStandardMaterial({ color: 0xff0000, transparent: true, opacity: 0.25 }),
     new MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 })
   ]
@@ -48,6 +59,7 @@ export const DebugRenderer = () => {
   const _boxGeometry = new BoxBufferGeometry()
   const _planeGeometry = new PlaneBufferGeometry(10000, 10000, 100, 100)
   let enabled = false
+  globalThis._meshes = _meshes
 
   const setEnabled = (_enabled) => {
     enabled = _enabled
@@ -79,11 +91,13 @@ export const DebugRenderer = () => {
         geom = new BoxBufferGeometry(halfExtents.x * 2, halfExtents.y * 2, halfExtents.z * 2)
       }
       const mesh = new Mesh(geom, _materials[5])
-      mesh.position.copy(obstacle.getPosition() as Vector3)
-      mesh.quaternion.copy(obstacle.getRotation() as Quaternion)
+      setObjectLayers(mesh, ObjectLayers.PhysicsHelper)
       Engine.scene.add(mesh)
       _obstacles.set(id, mesh)
     }
+    const mesh = _obstacles.get(id)
+    mesh.position.copy(obstacle.getPosition() as Vector3)
+    mesh.quaternion.copy(obstacle.getRotation() as Quaternion)
   }
 
   function _updateController(body: PhysX.PxRigidActor) {
@@ -122,6 +136,7 @@ export const DebugRenderer = () => {
         )
       }
       _meshes.set(id, mesh)
+      setObjectLayers(mesh, ObjectLayers.PhysicsHelper)
       Engine.scene.add(mesh)
     }
   }
@@ -219,6 +234,7 @@ export const DebugRenderer = () => {
     }
 
     if (mesh && mesh.geometry) {
+      setObjectLayers(mesh, ObjectLayers.PhysicsHelper)
       Engine.scene.add(mesh)
     }
 
@@ -229,6 +245,15 @@ export const DebugRenderer = () => {
     if (enabled !== _enabled) {
       enabled = _enabled
       setEnabled(_enabled)
+      // @ts-ignore
+      const xrCameras = Engine.xrManager?.getCamera() as ArrayCamera
+      if (enabled) {
+        Engine.camera.layers.enable(ObjectLayers.PhysicsHelper)
+        if (xrCameras) xrCameras.cameras.forEach((camera) => camera.layers.enable(ObjectLayers.PhysicsHelper))
+      } else {
+        Engine.camera.layers.disable(ObjectLayers.PhysicsHelper)
+        if (xrCameras) xrCameras.cameras.forEach((camera) => camera.layers.disable(ObjectLayers.PhysicsHelper))
+      }
     }
 
     if (!enabled) return

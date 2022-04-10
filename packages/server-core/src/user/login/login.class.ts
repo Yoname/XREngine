@@ -1,8 +1,9 @@
 import { Id, NullableId, Params, ServiceMethods } from '@feathersjs/feathers'
-import Paginated from '../../types/PageObject'
-import { Application } from '../../../declarations'
 import moment from 'moment'
+
+import { Application } from '../../../declarations'
 import logger from '../../logger'
+import Paginated from '../../types/PageObject'
 
 interface Data {}
 
@@ -31,7 +32,7 @@ export class Login implements ServiceMethods<Data> {
    * @returns {@Array} all login details
    * @author Vyacheslav Solovjov
    */
-  async find(params: Params): Promise<Data[] | Paginated<Data>> {
+  async find(params?: Params): Promise<Data[] | Paginated<Data>> {
     return []
   }
 
@@ -43,7 +44,7 @@ export class Login implements ServiceMethods<Data> {
    * @returns {@token}
    * @author Vyacheslav Solovjov
    */
-  async get(id: Id, params: Params): Promise<any> {
+  async get(id: Id, params?: Params): Promise<any> {
     try {
       const result = await (this.app.service('login-token') as any).Model.findOne({
         where: {
@@ -61,10 +62,29 @@ export class Login implements ServiceMethods<Data> {
         return { error: 'Login link has expired' }
       }
       const identityProvider = await this.app.service('identity-provider').get(result.identityProviderId)
+      const adminCount = await (this.app.service('user') as any).Model.count({
+        where: {
+          userRole: 'admin'
+        }
+      })
+      if (adminCount === 0)
+        await this.app.service('user').patch(identityProvider.userId, {
+          userRole: 'admin'
+        })
+      const apiKey = await this.app.service('user-api-key').find({
+        query: {
+          userId: identityProvider.userId
+        }
+      })
+      if ((apiKey as any).total === 0)
+        await this.app.service('user-api-key').create({
+          userId: identityProvider.userId
+        })
       const token = await (this.app.service('authentication') as any).createAccessToken(
         {},
         { subject: identityProvider.id.toString() }
       )
+      await this.app.service('login-token').remove(result.id)
       return {
         token: token
       }
@@ -82,7 +102,7 @@ export class Login implements ServiceMethods<Data> {
    * @returns created data
    * @author Vyacheslav Solovjov
    */
-  async create(data: Data, params: Params): Promise<Data> {
+  async create(data: Data, params?: Params): Promise<Data> {
     if (Array.isArray(data)) {
       return await Promise.all(data.map((current) => this.create(current, params)))
     }
@@ -99,7 +119,7 @@ export class Login implements ServiceMethods<Data> {
    * @returns updated data
    * @author Vyacheslav Solovjov
    */
-  async update(id: NullableId, data: Data, params: Params): Promise<Data> {
+  async update(id: NullableId, data: Data, params?: Params): Promise<Data> {
     return data
   }
 
@@ -111,7 +131,7 @@ export class Login implements ServiceMethods<Data> {
    * @param params
    * @returns data
    */
-  async patch(id: NullableId, data: Data, params: Params): Promise<Data> {
+  async patch(id: NullableId, data: Data, params?: Params): Promise<Data> {
     return data
   }
 
@@ -123,7 +143,7 @@ export class Login implements ServiceMethods<Data> {
    * @returns id
    */
 
-  async remove(id: NullableId, params: Params): Promise<Data> {
+  async remove(id: NullableId, params?: Params): Promise<Data> {
     return { id }
   }
 }

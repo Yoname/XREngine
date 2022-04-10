@@ -1,18 +1,24 @@
+import { AdminScopeType } from './AdminScopeType'
 import { IdentityProvider } from './IdentityProvider'
 import { LocationAdmin } from './LocationAdmin'
 import { LocationBan } from './LocationBan'
+import { Party } from './Party'
+import { UserApiKey } from './UserApiKey'
 import { UserId } from './UserId'
 import { RelationshipType } from './UserRelationship'
 
 export interface UserSetting {
   id: string
   spatialAudioEnabled: boolean
-  volume: number
+  volume?: number
+  audio: number
   microphone: number
+  themeMode: string
 }
 
 export interface UserScope {
   type: string
+  id: string
 }
 
 export interface User {
@@ -31,7 +37,9 @@ export interface User {
   locationBans?: LocationBan[]
   user_setting?: UserSetting
   inviteCode?: string
+  party?: Party
   scopes?: UserScope[]
+  apiKey: UserApiKey
 }
 
 export const UserSeed: User = {
@@ -39,8 +47,20 @@ export const UserSeed: User = {
   name: '',
   userRole: '',
   avatarId: '',
+  apiKey: {
+    id: '',
+    token: '',
+    userId: '' as UserId
+  },
   identityProviders: [],
   locationAdmins: []
+}
+
+export interface CreateEditUser {
+  name: string
+  avatarId: string
+  userRole: string
+  scopes: AdminScopeType[]
 }
 
 export function resolveUser(user: any): User {
@@ -63,6 +83,12 @@ export function resolveUser(user: any): User {
       locationBans: user.location_bans
     }
   }
+  if (user?.user_api_key && user.user_api_key.id) {
+    returned = {
+      ...returned,
+      apiKey: user.user_api_key
+    }
+  }
 
   // console.log('Returned user:')
   // console.log(returned)
@@ -78,7 +104,8 @@ export function resolveWalletUser(credentials: any): User {
     avatarId: credentials.user.id,
     identityProviders: [],
     locationAdmins: [],
-    avatarUrl: credentials.user.icon
+    avatarUrl: credentials.user.icon,
+    apiKey: credentials.user.apiKey || { id: '', token: '', userId: '' as UserId }
   }
 
   return returned

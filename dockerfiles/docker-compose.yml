@@ -15,8 +15,19 @@ services:
     build:
       context: ../
       dockerfile: ./dockerfiles/client/Dockerfile-client
+      args:
+        MYSQL_HOST: $MYSQL_HOST
+        MYSQL_PORT: $MYSQL_PORT
+        MYSQL_PASSWORD: $MYSQL_PASSWORD
+        MYSQL_DATABASE: $MYSQL_DATABASE
+        MYSQL_USER: $MYSQL_USER
   gameserver:
     image: ${LABEL}-gameserver
     build:
       context: ..
       dockerfile: ./dockerfiles/gameserver/Dockerfile-gameserver
+  testbot:
+    image: ${LABEL}-testbot
+    build:
+      context: ../
+      dockerfile: ./dockerfiles/testbot/Dockerfile-testbot

@@ -1,10 +1,20 @@
 /**
  * @author Abhishek Pathak <abhi.pathak401@gmail.com>
  */
-
 import React from 'react'
-import { CubemapBakeProperties } from './CubemapBakeProperties'
+import styled from 'styled-components'
+
+import { getComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { CubemapBakeComponent } from '@xrengine/engine/src/scene/components/CubemapBakeComponent'
+import { CubemapBakeTypes } from '@xrengine/engine/src/scene/types/CubemapBakeTypes'
+
 import SportsGolfIcon from '@mui/icons-material/SportsGolf'
+
+import { uploadBakeToServer } from '../../functions/uploadCubemapBake'
+import { PropertiesPanelButton } from '../inputs/Button'
+import { CubemapBakeProperties } from './CubemapBakeProperties'
+import NodeEditor from './NodeEditor'
+import { EditorComponentType } from './Util'
 
 export const enum BakePropertyTypes {
   'Boolean',
@@ -13,6 +23,18 @@ export const enum BakePropertyTypes {
   'Resolution',
   'Vector'
 }
+
+const TitleLabel = (styled as any).div`
+  display: flex;
+  flex-direction: row;
+  align-items: left;
+  font-weight: bold;
+  color: var(--text2);
+  padding: 0 8px 8px;
+  :last-child {
+    margin-left: auto;
+  }
+`
 
 const DefaultCubemapBakeSettings = [
   {
@@ -68,34 +90,37 @@ const DefaultCubemapBakeSettings = [
   }
 ]
 
-export type CubemapBakeNodeEditorProps = {
-  node?: object
-}
-
-export const CubemapBakeNodeEditor = (props: CubemapBakeNodeEditorProps) => {
+export const CubemapBakeNodeEditor: EditorComponentType = (props) => {
   const renderCubemapBakeProperties = () => {
+    const bakeComponent = getComponent(props.node.entity, CubemapBakeComponent)
+
     const renderedProperty = DefaultCubemapBakeSettings.map((element, id) => {
-      if ((props.node as any).cubemapBakeSettings.bakeType == 1 && element.label == 'Realtime Settings') {
+      if (element.label == 'Realtime Settings' && bakeComponent.options.bakeType == CubemapBakeTypes.Realtime) {
         return <div key={id + 'Realtime'} />
       }
-      const renderProp = element.label ? [<div key={id + 'title'}>{element.label}</div>] : []
-      element?.options?.forEach((property, propertyid) => {
-        renderProp.push(<CubemapBakeProperties key={id + '' + propertyid} element={property} {...props} />)
+
+      const renderProp = element.label ? [<TitleLabel key={id + 'title'}>{element.label}</TitleLabel>] : []
+
+      element.options?.forEach((property, propertyid) => {
+        renderProp.push(
+          <CubemapBakeProperties key={id + '' + propertyid} element={property} bakeComponent={bakeComponent} />
+        )
       })
+
       renderProp.push(<br key={id + 'break'} />)
       return renderProp
     })
-    return <>{renderedProperty}</>
+
+    return renderedProperty
   }
 
   return (
-    <div>
+    <NodeEditor {...props} name="Cubemap Bake" description="For Adding Cubemap bake in your scene">
       {renderCubemapBakeProperties()}
-      {/* <MediumButton onClick={(props.node as any).Bake}>Bake</MediumButton> */}
-    </div>
+      <PropertiesPanelButton onClick={() => uploadBakeToServer(props.node.entity)}>Bake</PropertiesPanelButton>
+    </NodeEditor>
   )
 }
 
 CubemapBakeNodeEditor.iconComponent = SportsGolfIcon
-CubemapBakeNodeEditor.description = 'For Adding Cubemap bake in your scene'
 export default CubemapBakeNodeEditor

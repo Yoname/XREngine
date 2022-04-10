@@ -1,53 +1,67 @@
-import React, { useState, useEffect } from 'react'
-import Fade from '@mui/material/Fade'
-import Modal from '@mui/material/Modal'
-import styles from '../Admin.module.scss'
-import classNames from 'classnames'
-import Autocomplete from '@mui/material/Autocomplete'
-import TextField from '@mui/material/TextField'
-import { LocationService } from '../../services/LocationService'
-import { useDispatch } from '../../../store'
-import { useAuthState } from '../../../user/services/AuthService'
-import { PartyService } from '../../services/PartyService'
-import { InstanceService } from '../../services/InstanceService'
-import DialogContentText from '@mui/material/DialogContentText'
-import DialogActions from '@mui/material/DialogActions'
-import Button from '@mui/material/Button'
-import Typography from '@mui/material/Typography'
-import { PartyProps } from './variables'
-import { usePartyStyle } from './style'
-import { useLocationState } from '../../services/LocationService'
-import { useInstanceState } from '../../services/InstanceService'
+import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Instance } from '@xrengine/common/src/interfaces/Instance'
 
+import DialogContentText from '@mui/material/DialogContentText'
+import FormControl from '@mui/material/FormControl'
+import MenuItem from '@mui/material/MenuItem'
+import Paper from '@mui/material/Paper'
+import Select from '@mui/material/Select'
+
+import { useAuthState } from '../../../user/services/AuthService'
+import CreateModal from '../../common/CreateModal'
+import { useFetchAdminInstance } from '../../common/hooks/Instance.hooks'
+import { useFetchAdminLocations } from '../../common/hooks/Location.hooks'
+import { validateForm } from '../../common/validation/formValidation'
+import { PartyProps } from '../../common/variables/party'
+import { InstanceService } from '../../services/InstanceService'
+import { useInstanceState } from '../../services/InstanceService'
+import { LocationService } from '../../services/LocationService'
+import { useLocationState } from '../../services/LocationService'
+import { PartyService } from '../../services/PartyService'
+import styles from '../../styles/admin.module.scss'
+
 const CreateParty = (props: PartyProps) => {
-  const classes = usePartyStyle()
   CreateParty
   const { open, handleClose } = props
+  const { t } = useTranslation()
 
-  const [location, setLocation] = useState('')
-  const [instance, setInstance] = React.useState('')
-  const dispatch = useDispatch()
+  const [newParty, setNewParty] = useState({
+    location: '',
+    instance: '',
+    formErrors: {
+      location: '',
+      instance: ''
+    }
+  })
+
   const authState = useAuthState()
   const user = authState.user
   const adminLocationState = useLocationState()
   const locationData = adminLocationState.locations
   const adminInstanceState = useInstanceState()
-  const adminInstances = adminInstanceState
-  const instanceData = adminInstances.instances
+  const instanceData = adminInstanceState.instances
 
-  useEffect(() => {
-    if (user?.id.value != null && adminLocationState.updateNeeded.value === true) {
-      LocationService.fetchAdminLocations()
-    }
-    if (user.id.value && adminInstances.updateNeeded.value) {
-      InstanceService.fetchAdminInstances()
-    }
-  }, [authState.user?.id?.value, adminLocationState.updateNeeded.value, adminInstanceState.updateNeeded.value])
+  //Call custom hooks
+  useFetchAdminInstance(user, adminInstanceState, InstanceService)
+  useFetchAdminLocations(user, adminLocationState, LocationService)
 
-  const defaultProps = {
-    options: locationData.value,
-    getOptionLabel: (option: any) => option.name
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    let temp = newParty.formErrors
+    switch (name) {
+      case 'location':
+        temp.location = value.length < 2 ? t('admin:components.party.locationRequired') : ''
+        break
+      case 'instance':
+        temp.instance = value.length < 2 ? t('admin:components.party.instanceRequired') : ''
+        break
+
+      default:
+        break
+    }
+    setNewParty({ ...newParty, [name]: value, formErrors: temp })
   }
 
   const data: Instance[] = []
@@ -55,82 +69,93 @@ const CreateParty = (props: PartyProps) => {
     data.push(element)
   })
 
-  const InstanceProps = {
-    options: data,
-    getOptionLabel: (option: any) => option.ipAddress
-  }
+  const submitParty = async () => {
+    const data = {
+      locationId: newParty.location,
+      instanceId: newParty.instance
+    }
+    let temp = newParty.formErrors
+    if (!newParty.location) {
+      temp.location = t('admin:components.party.locationCantEmpty')
+    }
+    if (!newParty.instance) {
+      temp.instance = t('admin:components.party.instanceCantEmpty')
+    }
+    setNewParty({ ...newParty, formErrors: temp })
 
-  const submitParty = async (e) => {
-    e.preventDefault()
-    await dispatch(
-      PartyService.createAdminParty({
-        locationId: location,
-        instanceId: instance
-      })
-    )
-    setLocation('')
-    setInstance('')
-    handleClose()
+    if (validateForm(newParty, newParty.formErrors)) {
+      await PartyService.createAdminParty(data)
+      setNewParty({ ...newParty, location: '', instance: '' })
+      handleClose()
+    }
   }
-
   return (
-    <React.Fragment>
-      <Modal
-        aria-labelledby="transition-modal-title"
-        aria-describedby="transition-modal-description"
-        className={styles.modal}
-        open={open}
-        onClose={handleClose}
-        closeAfterTransition
+    <CreateModal open={open} action="Create" text="party" handleClose={handleClose} submit={submitParty}>
+      <label>{t('admin:components.party.instance')}</label>
+      <Paper
+        component="div"
+        className={newParty.formErrors.instance.length > 0 ? styles.redBorder : styles.createInput}
       >
-        <Fade in={props.open}>
-          <div
-            className={classNames({
-              [styles.paper]: true,
-              [styles['modal-content']]: true
-            })}
+        <FormControl fullWidth>
+          <Select
+            labelId="demo-controlled-open-select-label"
+            id="demo-controlled-open-select"
+            value={newParty.instance}
+            fullWidth
+            displayEmpty
+            onChange={handleChange}
+            className={styles.select}
+            name="instance"
+            MenuProps={{ classes: { paper: styles.selectPaper } }}
           >
-            <Typography variant="h5" gutterBottom={true} className={classes.marginTop}>
-              Create new party
-            </Typography>
-            <form>
-              <Autocomplete
-                onChange={(e, newValue) => setLocation(newValue.id as string)}
-                {...defaultProps}
-                id="debug"
-                debug
-                renderInput={(params) => <TextField {...params} label="Locations" className={classes.marginBottm} />}
-              />
+            <MenuItem value="" disabled>
+              <em>{t('admin:components.party.selectInstance')}</em>
+            </MenuItem>
+            {data.map((el) => (
+              <MenuItem value={el?.id} key={el?.id}>
+                {el?.ipAddress}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Paper>
 
-              <Autocomplete
-                onChange={(e, newValue) => setInstance(newValue.id as string)}
-                {...InstanceProps}
-                id="debug"
-                debug
-                renderInput={(params) => <TextField {...params} label="Instance" className={classes.marginBottm} />}
-              />
+      <label>{t('admin:components.party.location')}</label>
+      <Paper
+        component="div"
+        className={newParty.formErrors.location.length > 0 ? styles.redBorder : styles.createInput}
+      >
+        <FormControl fullWidth>
+          <Select
+            labelId="demo-controlled-open-select-label"
+            id="demo-controlled-open-select"
+            value={newParty.location}
+            fullWidth
+            displayEmpty
+            onChange={handleChange}
+            className={styles.select}
+            name="location"
+            MenuProps={{ classes: { paper: styles.selectPaper } }}
+          >
+            <MenuItem value="" disabled>
+              <em>{t('admin:components.party.selectLocation')}</em>
+            </MenuItem>
+            {locationData.value.map((el) => (
+              <MenuItem value={el?.id} key={el?.id}>
+                {el?.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Paper>
 
-              <DialogContentText className={classes.marginBottm}>
-                {' '}
-                Don't see Instance?{' '}
-                <a href="/admin/instance" className={classes.textLink}>
-                  Create One
-                </a>{' '}
-              </DialogContentText>
-
-              <DialogActions>
-                <Button type="submit" color="primary" onClick={(e) => submitParty(e)}>
-                  Submit
-                </Button>
-                <Button onClick={handleClose} color="primary">
-                  Cancel
-                </Button>
-              </DialogActions>
-            </form>
-          </div>
-        </Fade>
-      </Modal>
-    </React.Fragment>
+      <DialogContentText className={styles.mb15}>
+        <span className={styles.spanWhite}>{t('admin:components.party.dontSeeLocation')}</span>
+        <a href="/admin/locations" className={styles.textLink}>
+          {t('admin:components.party.createOne')}
+        </a>
+      </DialogContentText>
+    </CreateModal>
   )
 }
 

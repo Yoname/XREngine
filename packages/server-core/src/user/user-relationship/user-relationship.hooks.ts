@@ -1,12 +1,11 @@
-import * as authentication from '@feathersjs/authentication'
-import * as commonHooks from 'feathers-hooks-common'
 import { HookContext } from '@feathersjs/feathers'
+import { iff, isProvider } from 'feathers-hooks-common'
 
-const { authenticate } = authentication.hooks
+import authenticate from '../../hooks/authenticate'
 
 export default {
   before: {
-    all: [commonHooks.iff(commonHooks.isProvider('external'), authenticate('jwt') as any)],
+    all: [iff(isProvider('external'), authenticate() as any)],
     find: [],
     get: [],
     create: [],

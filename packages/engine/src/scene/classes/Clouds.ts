@@ -1,19 +1,22 @@
+import SimplexNoise from 'simplex-noise'
 import {
-  Mesh,
-  InstancedBufferGeometry,
-  PlaneBufferGeometry,
-  ShaderMaterial,
-  Vector3,
+  Color,
   InstancedBufferAttribute,
+  InstancedBufferGeometry,
+  Mesh,
+  Object3D,
+  PlaneBufferGeometry,
   RawShaderMaterial,
+  ShaderMaterial,
   UniformsUtils,
   Vector2,
-  Color,
-  Texture,
-  TextureLoader
+  Vector3
 } from 'three'
-import SimplexNoise from 'simplex-noise'
-import { TGALoader } from '../../assets/loaders/tga/TGALoader'
+
+import { AssetLoader } from '../../assets/classes/AssetLoader'
+import { Entity } from '../../ecs/classes/Entity'
+import { Object3DWithEntity } from '../components/Object3DComponent'
+import { addError, removeError } from '../functions/ErrorFunctions'
 
 const vertexShader = `
 precision highp float;
@@ -57,14 +60,7 @@ void main() {
 }
 `
 
-function loadTexture(src): Promise<Texture> {
-  const loader = src.endsWith('tga') ? new TGALoader() : new TextureLoader()
-  return new Promise((resolve, reject) => {
-    loader.load(src, resolve, null, (error) => reject(error))
-  })
-}
-
-export class Clouds extends Mesh {
+export class Clouds extends Mesh<InstancedBufferGeometry, ShaderMaterial> {
   private _worldScale: Vector3
   private _texture: string
   private _dimensions: Vector3 // Number of particles (x,y,z)
@@ -76,7 +72,9 @@ export class Clouds extends Mesh {
   _noise: SimplexNoise
   needsUpdate: boolean
 
-  constructor() {
+  entity: Entity
+
+  constructor(entity: Entity) {
     const planeGeometry = new PlaneBufferGeometry(1, 1, 1, 1)
     const geometry = new InstancedBufferGeometry()
     geometry.index = planeGeometry.index
@@ -97,6 +95,7 @@ export class Clouds extends Mesh {
     })
 
     super(geometry, material)
+    this.entity = entity
 
     this.frustumCulled = false
     this._noise = new SimplexNoise('seed')
@@ -170,11 +169,11 @@ export class Clouds extends Mesh {
     geometry.setAttribute('particles', new InstancedBufferAttribute(new Float32Array(particleArray), particleItemSize))
     geometry.setAttribute('particleAngle', new InstancedBufferAttribute(new Float32Array(zRotationArray), 1))
     this.geometry = geometry
-    ;(this.material as any).uniforms.fogColor.value = this.fogColor
-    ;(this.material as any).uniforms.fogRange.value = this.fogRange
+    this.material.uniforms.fogColor.value = this.fogColor
+    this.material.uniforms.fogRange.value = this.fogRange
   }
 
-  update(dt: number) {
+  update() {
     if (this.needsUpdate) {
       this.needsUpdate = false
       this.updateParticles()
@@ -184,8 +183,8 @@ export class Clouds extends Mesh {
   copy(source: this, recursive = true) {
     super.copy(source, recursive)
 
-    const material = (this as any).material as RawShaderMaterial
-    const sourceMaterial = (source as any).material as RawShaderMaterial
+    const material = this.material as RawShaderMaterial
+    const sourceMaterial = source.material as RawShaderMaterial
 
     material.uniforms.map.value = sourceMaterial.uniforms.map.value
 
@@ -206,12 +205,14 @@ export class Clouds extends Mesh {
 
   set texture(path: string) {
     this._texture = path
-
-    loadTexture(path)
+    AssetLoader.loadAsync(path)
       .then((texture) => {
-        ;(this.material as any).uniforms.map.value = texture
+        this.material.uniforms.map.value = texture
+        removeError(this.entity, 'error')
       })
-      .catch(console.error)
+      .catch((error) => {
+        addError(this.entity, 'error', error.message)
+      })
   }
 
   public get worldScale(): Vector3 {

@@ -4,22 +4,33 @@
  * @author Fernando Serrano, Robert Long
  * @packageDocumentation
  */
+import {
+  DirectionalLight,
+  Object3D,
+  OrthographicCamera,
+  PerspectiveCamera,
+  Scene,
+  WebGLRenderer,
+  WebXRManager,
+  XRFrame,
+  XRSession
+} from 'three'
 
-import { DirectionalLight, Object3D, PerspectiveCamera, Scene, WebGLRenderer, XRFrame, XRSession } from 'three'
-import { Entity } from './Entity'
-import { InputValue } from '../../input/interfaces/InputValue'
-import { EngineEvents } from './EngineEvents'
-import { CSM } from '../../assets/csm/CSM'
-import { EffectComposerWithSchema } from '../../renderer/WebGLRendererSystem'
-import { OrthographicCamera } from 'three'
-import { World } from '../classes/World'
 import { UserId } from '@xrengine/common/src/interfaces/UserId'
+
+import { CSM } from '../../assets/csm/CSM'
+import { isBot } from '../../common/functions/isBot'
+import { InputValue } from '../../input/interfaces/InputValue'
+import { EffectComposerWithSchema } from '../../renderer/WebGLRendererSystem'
+import { World } from '../classes/World'
+import { accessEngineState } from './EngineService'
+import { Entity } from './Entity'
 
 /**
  * This is the base class which holds all the data related to the scene, camera,system etc.
  * Data is holded statically hence will be available everywhere.
  *
- * @author Shaw, Josh, Vyacheslav, Gheric and the XREngine Team
+ * @author Josh, Vyacheslav, Gheric and the XREngine Team
  */
 export class Engine {
   /** The uuid of the logged-in user */
@@ -27,8 +38,7 @@ export class Engine {
 
   public static engineTimer: { start: Function; stop: Function; clear: Function } = null!
 
-  public static xrSupported = false
-  public static isBot = false
+  public static isBot = 'window' in globalThis ? isBot(window) : false
 
   public static isHMD = false
 
@@ -47,7 +57,7 @@ export class Engine {
    */
   static renderer: WebGLRenderer = null!
   static effectComposer: EffectComposerWithSchema = null!
-  static xrManager = null! as any
+  static xrManager: WebXRManager = null!
   static xrSession: XRSession = null!
   static csm: CSM = null!
   static isCSMEnabled = false
@@ -56,8 +66,9 @@ export class Engine {
    * Reference to the three.js scene object.
    */
   static scene: Scene = null!
-  static sceneLoaded = false
-  static isLoading = false
+  static get sceneLoaded() {
+    return accessEngineState().sceneLoaded.value
+  }
   static sceneLoadPromises: Promise<void>[] = []
 
   /**
@@ -83,6 +94,7 @@ export class Engine {
   static prevInputState = new Map<any, InputValue>()
 
   static isInitialized = false
+  static isReady = false
 
   static hasJoinedWorld = false
 
@@ -90,9 +102,7 @@ export class Engine {
 
   static workers = [] as any[]
   static simpleMaterials = false
-
-  static mouseInputEnabled = true
-  static keyboardInputEnabled = true
-
   static xrFrame: XRFrame
+
+  static isEditor = false
 }

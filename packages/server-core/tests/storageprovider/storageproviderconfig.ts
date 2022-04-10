@@ -1,8 +1,9 @@
-import path from 'path'
-import S3Provider from '../../src/media/storageprovider/s3.storage'
 import appRootPath from 'app-root-path'
 import fs from 'fs'
+import path from 'path'
+
 import { StartTestFileServer } from '../../src/createFileServer'
+import S3Provider from '../../src/media/storageprovider/s3.storage'
 
 export const providerBeforeTest = (provider, testFolderName: string, folderKeyTemp: string, folderKeyTemp2: string) => {
   if (provider.constructor.name === 'LocalStorage')
@@ -55,6 +56,7 @@ const clearS3TestFolder = (provider: S3Provider, testFolderName: string): Promis
 }
 const s3StorageBeforeTest = async (provider: S3Provider): Promise<any> => {
   provider.bucket = process.env.STORAGE_S3_TEST_RESOURCE_BUCKET!
+
   let bucketExists
   try {
     bucketExists = await provider.provider.headBucket({ Bucket: provider.bucket }).promise()

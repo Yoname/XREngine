@@ -10,9 +10,6 @@ const config: ProjectConfigInterface = {
         exact: true
       }
     },
-    '/login': {
-      component: () => import('@xrengine/client/src/pages/login')
-    },
     '/admin': {
       component: () => import('@xrengine/client-core/src/admin/adminRoutes')
     },
@@ -27,15 +24,6 @@ const config: ProjectConfigInterface = {
     },
     '/examples': {
       component: () => import('@xrengine/client/src/pages/examples/index')
-    },
-    '/inventory': {
-      component: () => import('@xrengine/client-core/src/user/components/UserMenu/Inventory/index')
-    },
-    '/trading': {
-      component: () => import('@xrengine/client-core/src/user/components/UserMenu/Trading/index')
-    },
-    '/wallet': {
-      component: () => import('@xrengine/client-core/src/user/components/UserMenu/Wallet/index')
     }
   },
   services: undefined,

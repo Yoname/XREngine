@@ -1,4 +1,6 @@
 import matches from 'ts-matches'
+
+import { matchesWeightsParameters } from '../../avatar/animation/Util'
 import {
   defineActionCreator,
   matchesNetworkId,
@@ -6,16 +8,16 @@ import {
   matchesUserId,
   matchesVector3,
   matchesWithDefault
-} from '../interfaces/Action'
+} from '../../ecs/functions/Action'
+import { useWorld } from '../../ecs/functions/SystemHooks'
 import { matchPose } from '../../transform/TransformInterfaces'
 import { matchesAvatarProps } from '../interfaces/WorldState'
-import { matchesWeightsParameters } from '../../avatar/animations/Util'
-import { useWorld } from '../../ecs/functions/SystemHooks'
 
 export class NetworkWorldAction {
   static createClient = defineActionCreator({
     type: 'network.CREATE_CLIENT',
-    name: matches.string
+    name: matches.string,
+    index: matches.number
   })
 
   static destroyClient = defineActionCreator({
@@ -36,7 +38,18 @@ export class NetworkWorldAction {
       type: 'network.SPAWN_OBJECT',
       prefab: matches.string,
       networkId: matchesWithDefault(matchesNetworkId, () => useWorld().createNetworkId()),
+      ownerIndex: matches.number,
       parameters: matches.any.optional()
+    },
+    (action) => {
+      action.$cache = true
+    }
+  )
+
+  static spawnDebugPhysicsObject = defineActionCreator(
+    {
+      type: 'network.SPAWN_DEBUG_PHYSICS_OBJECT',
+      config: matches.any.optional()
     },
     (action) => {
       action.$cache = true
@@ -95,5 +108,23 @@ export class NetworkWorldAction {
       networkId: matchesNetworkId
     }),
     pose: matchPose
+  })
+
+  static requestAuthorityOverObject = defineActionCreator({
+    type: 'network.REQUEST_AUTHORITY_OVER_OBJECT',
+    object: matches.shape({
+      ownerId: matchesUserId,
+      networkId: matchesNetworkId
+    }),
+    requester: matchesUserId
+  })
+
+  static transferAuthorityOfObject = defineActionCreator({
+    type: 'network.TRANSFER_AUTHORITY_OF_OBJECT',
+    object: matches.shape({
+      ownerId: matchesUserId,
+      networkId: matchesNetworkId
+    }),
+    newAuthor: matchesUserId
   })
 }

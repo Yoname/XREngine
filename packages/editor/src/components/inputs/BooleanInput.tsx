@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import Input from './Input'
 import styled from 'styled-components'
+
 import CheckIcon from '@mui/icons-material/Check'
+
+import Input from './Input'
 
 let uniqueId = 0
 
@@ -15,8 +17,8 @@ const StyledBooleanInput = (styled as any).input`
   display: none;
 
   :disabled ~ label {
-    background-color: ${(props) => props.theme.disabled};
-    color: ${(props) => props.theme.disabledText};
+    background-color: var(--disabled);
+    color: var(--disabledText);
   }
 `
 
@@ -29,10 +31,11 @@ const StyledBooleanInput = (styled as any).input`
 const BooleanInputLabel = (styled as any)(Input).attrs(() => ({ as: 'label' }))`
   width: 18px;
   height: 18px;
-  margin: 4px;
   cursor: pointer;
-  display: block;
-  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
 `
 
 /**
@@ -42,10 +45,9 @@ const BooleanInputLabel = (styled as any)(Input).attrs(() => ({ as: 'label' }))`
  * @type {styled component}
  */
 const BooleanCheck = (styled as any)(CheckIcon)`
-  position: absolute;
-  top: 3px;
-  left: 2px;
-  color: ${(props) => props.theme.blue};
+  width: 100%;
+  height: auto;
+  color: var(--purpleColor);
 `
 
 interface BooleanInputProp {
@@ -67,13 +69,20 @@ export const BooleanInput = (props: BooleanInputProp) => {
 
   // function handling changes in BooleanInput
   const onChange = (e) => {
+    if (e.key) {
+      if (e.key === 'Enter' || e.key === ' ') props?.onChange(!props.value)
+      return
+    }
+
     props?.onChange(e.target.checked)
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       <StyledBooleanInput id={checkboxId} type="checkbox" checked={props.value} onChange={onChange} />
-      <BooleanInputLabel htmlFor={checkboxId}>{props.value && <BooleanCheck size={12} />}</BooleanInputLabel>
+      <BooleanInputLabel htmlFor={checkboxId} tabIndex={0} onKeyPress={onChange}>
+        {props.value && <BooleanCheck size={12} />}
+      </BooleanInputLabel>
     </div>
   )
 }

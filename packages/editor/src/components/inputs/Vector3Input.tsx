@@ -1,41 +1,49 @@
 import React, { useState } from 'react'
-import NumericInput from './NumericInput'
-import Scrubber from './Scrubber'
-import { Vector3 } from 'three'
 import styled from 'styled-components'
+import { Vector3 } from 'three'
+
 import LinkIcon from '@mui/icons-material/Link'
 import LinkOffIcon from '@mui/icons-material/LinkOff'
+
 import Hidden from '../layout/Hidden'
+import NumericInput from './NumericInput'
+import Scrubber from './Scrubber'
 
 export const Vector3InputContainer = (styled as any).div`
+  position: relative;
   display: flex;
   flex-direction: row;
   flex: 1 1 auto;
-  width: 70%;
   justify-content: flex-start;
+  gap: 6px;
 `
 
 export const Vector3Scrubber = (styled as any)(Scrubber)`
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  color: ${(props) => props.theme.text2};
+  color: var(--text);
+  padding: 4px;
+  background: ${(props) => (props.axis === 'x' ? 'var(--red)' : props.axis === 'y' ? 'var(--green)' : 'var(--blue)')};
 `
 
-const UniformButtonContainer = (styled as any).div`
+export const UniformButtonContainer = (styled as any).div`
+  position: absolute;
+  right: -24px;
+  top: 0;
   display: flex;
   align-items: center;
+  width: 18px;
 
   svg {
-    width: 12px;
+    width: 100%;
   }
 
   label {
-    color: ${(props) => props.theme.text2};
+    color: var(--text2);
   }
 
   label:hover {
-    color: ${(props) => props.theme.blueHover};
+    color: var(--blueHover);
   }
 `
 
@@ -51,11 +59,6 @@ interface Vector3InputProp {
   hideLabels?: boolean
 }
 
-interface Vector3InputState {
-  uniformEnabled: any
-  hideLabels: boolean
-}
-
 /**
  *
  * @author Robert Long
@@ -64,7 +67,6 @@ export const Vector3Input = (props: Vector3InputProp) => {
   const id = uniqueId++
   const newValue = new Vector3()
   const [uniformEnabled, setUniformEnabled] = useState(props.uniformScaling)
-  const [hideLabels, setHideLabels] = useState(props.hideLabels ?? false)
 
   const onToggleUniform = () => {
     setUniformEnabled(!uniformEnabled)
@@ -104,6 +106,42 @@ export const Vector3Input = (props: Vector3InputProp) => {
 
   return (
     <Vector3InputContainer>
+      <NumericInput
+        {...rest}
+        value={vx}
+        onChange={onChangeX}
+        prefix={
+          props.hideLabels ? null : (
+            <Vector3Scrubber {...rest} tag="div" value={vx} onChange={onChangeX} axis="x">
+              X
+            </Vector3Scrubber>
+          )
+        }
+      />
+      <NumericInput
+        {...rest}
+        value={vy}
+        onChange={onChangeY}
+        prefix={
+          props.hideLabels ? null : (
+            <Vector3Scrubber {...rest} tag="div" value={vy} onChange={onChangeY} axis="y">
+              Y
+            </Vector3Scrubber>
+          )
+        }
+      />
+      <NumericInput
+        {...rest}
+        value={vz}
+        onChange={onChangeZ}
+        prefix={
+          props.hideLabels ? null : (
+            <Vector3Scrubber {...rest} tag="div" value={vz} onChange={onChangeZ} axis="z">
+              Z
+            </Vector3Scrubber>
+          )
+        }
+      />
       {uniformScaling && (
         <UniformButtonContainer>
           <Hidden as="input" id={checkboxId} type="checkbox" checked={uniformEnabled} onChange={onToggleUniform} />
@@ -112,18 +150,6 @@ export const Vector3Input = (props: Vector3InputProp) => {
           </label>
         </UniformButtonContainer>
       )}
-      <Vector3Scrubber {...rest} tag="div" value={vx} onChange={onChangeX}>
-        {!hideLabels && <div>X:</div>}
-      </Vector3Scrubber>
-      <NumericInput {...rest} value={vx} onChange={onChangeX} />
-      <Vector3Scrubber {...rest} tag="div" value={vy} onChange={onChangeY}>
-        {!hideLabels && <div>Y:</div>}
-      </Vector3Scrubber>
-      <NumericInput {...rest} value={vy} onChange={onChangeY} />
-      <Vector3Scrubber {...rest} tag="div" value={vz} onChange={onChangeZ}>
-        {!hideLabels && <div>Z:</div>}
-      </Vector3Scrubber>
-      <NumericInput {...rest} value={vz} onChange={onChangeZ} />
     </Vector3InputContainer>
   )
 }

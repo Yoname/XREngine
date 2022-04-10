@@ -1,6 +1,7 @@
-import { Vector3, Quaternion } from 'three'
+import { ComponentType, defineComponent, Types } from 'bitecs'
+import { Quaternion, Vector3 } from 'three'
+
 import { createMappedComponent } from '../../ecs/functions/ComponentFunctions'
-import { Types } from 'bitecs'
 
 export type TransformComponentType = {
   position: Vector3
@@ -9,11 +10,18 @@ export type TransformComponentType = {
 }
 
 const { f32 } = Types
-const Vector3Schema = { x: f32, y: f32, z: f32 }
-const QuaternionSchema = { x: f32, y: f32, z: f32, w: f32 }
-
-export const TransformComponent = createMappedComponent<TransformComponentType>('TransformComponent', {
+export const Vector3Schema = { x: f32, y: f32, z: f32 }
+export const QuaternionSchema = { x: f32, y: f32, z: f32, w: f32 }
+export const Object3DSchema = {
   position: Vector3Schema,
   rotation: QuaternionSchema,
   scale: Vector3Schema
-})
+}
+
+export const TransformComponent = createMappedComponent<TransformComponentType, typeof Object3DSchema>(
+  'TransformComponent',
+  Object3DSchema
+)
+// createComponent('TransformComponent', SCHEMA).withMap<TransformComponentType>()
+
+globalThis.TransformComponent = TransformComponent

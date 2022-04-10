@@ -1,14 +1,15 @@
 import { Bone, Vector3 } from 'three'
-import Pose, { PoseBoneLocalState } from './Pose'
+
 import { FORWARD, UP } from '../constants/Vector3Constants'
 import { IKSolverFunction } from '../functions/IKSolvers'
+import Pose, { PoseBoneLocalState } from './Pose'
 
 type ChainBoneData = { index: number; ref: Bone; length: number }
 
 const boneWorldPosition = new Vector3(),
   childWorldPosition = new Vector3()
 export class Chain {
-  end_idx: number | null
+  end_idx: number
   chainBones: ChainBoneData[]
   length: number
   cnt: number
@@ -22,7 +23,7 @@ export class Chain {
     this.cnt = 0 // How many Bones in the chain
 
     //this.align_axis	= axis;			// Chain is aligned to which axis
-    this.end_idx = null // Joint that Marks the true end of the chain
+    this.end_idx = -1 // Joint that Marks the true end of the chain
 
     this.altForward = FORWARD.clone()
     this.altUp = UP.clone()
@@ -81,7 +82,7 @@ export class Chain {
     }
 
     // If End Point exists, Can calculate the final bone's length
-    if (this.end_idx !== null && this.end_idx > -1) {
+    if (this.end_idx > -1) {
       bd = this.chainBones[end]
       bd.length = bones[this.end_idx].world.position.distanceTo(bones[this.chainBones[end].index].world.position)
       bones[this.chainBones[end].index].length = bd.length

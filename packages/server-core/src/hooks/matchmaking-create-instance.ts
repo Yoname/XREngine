@@ -1,41 +1,48 @@
-import { Hook, HookContext } from '@feathersjs/feathers'
-import { getFreeGameserver } from '../networking/instance-provision/instance-provision.class'
+import { Hook, HookContext, Paginated } from '@feathersjs/feathers'
+
+import { Instance } from '@xrengine/common/src/interfaces/Instance'
+import { Location as LocationType } from '@xrengine/common/src/interfaces/Location'
+
 import { Application } from '../../declarations'
+import { getFreeGameserver } from '../networking/instance-provision/instance-provision.class'
 
 export default (): Hook => {
-  return async (context: HookContext): Promise<HookContext> => {
-    const { app, result, params } = context
-    console.log('assignment HOOK!', result)
-    const identityProvider = params['identity-provider']
+  return async (context: HookContext<Application>): Promise<HookContext> => {
+    const { app, result } = context
+    const matchInstanceId = result?.id
     const connection = result?.connection
-    const gameMode = result?.extensions?.GameMode.value
-    // context.params.connection
-    if (!connection || !gameMode) {
+    const gameMode = result?.gamemode
+
+    if (!connection) {
+      // assignment is not found yet
+      return context
+    }
+    if (!gameMode) {
       // throw error?!
       throw new Error('Unexpected response from match finder. ' + JSON.stringify(result))
     }
 
     const locationName = 'game-' + gameMode
-    const location = await app.service('location').find({
+    const location = (await app.service('location').find({
       query: {
         name: locationName
       }
-    })
+    })) as Paginated<LocationType>
     if (!location.data.length) {
       // throw error?!
       throw new Error(`Location for match type '${gameMode}'(${locationName}) is not found.`)
     }
 
-    const freeInstance = await getFreeGameserver(app as Application, 0, location.data[0].id, null!)
+    const freeInstance = await getFreeGameserver(app, 0, location.data[0].id, null!)
     try {
-      const existingInstance = await app.service('instance').find({
+      const existingInstance = (await app.service('instance').find({
         query: {
           ipAddress: `${freeInstance.ipAddress}:${freeInstance.port}`,
           locationId: location.data[0].id,
           ended: false
         }
-      })
-      console.log('existing instance for match', existingInstance)
+      })) as Paginated<Instance>
+
       let instanceId
       if (existingInstance.total === 0) {
         const newInstance = {
@@ -45,27 +52,18 @@ export default (): Hook => {
           assigned: true,
           assignedAt: new Date()
         }
-        const newInstanceResult = await app.service('instance').create(newInstance)
+        const newInstanceResult = (await app.service('instance').create(newInstance)) as Instance
         instanceId = newInstanceResult.id
       } else {
         instanceId = existingInstance.data[0].id
       }
 
-      const existingInstanceAuthorizedUser = await app.service('instance-authorized-user').find({
-        query: {
-          userId: identityProvider.userId,
-          instanceId: instanceId,
-          $limit: 0
-        }
+      // matchInstanceId
+      await app.service('match-instance').patch(matchInstanceId, {
+        gameserver: instanceId
       })
-      if (existingInstanceAuthorizedUser.total === 0)
-        await app.service('instance-authorized-user').create({
-          userId: identityProvider.userId,
-          instanceId: instanceId
-        })
 
-      context.result.instanceId = instanceId
-      context.result.locationName = locationName
+      context.result.gameserver = instanceId
     } catch (e) {
       console.log('matchmaking instance create error', e)
       // TODO: check error? skip?

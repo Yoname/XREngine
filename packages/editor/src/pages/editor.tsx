@@ -1,113 +1,42 @@
 import React, { Suspense, useEffect, useState } from 'react'
-import Projects from '@xrengine/editor/src/pages/projects'
-import { AuthService } from '@xrengine/client-core/src/user/services/AuthService'
-import EditorContainer from '../components/EditorContainer'
+import { Route, Switch, useHistory } from 'react-router-dom'
+
 import { useAuthState } from '@xrengine/client-core/src/user/services/AuthService'
-import { initializeEngine } from '@xrengine/engine/src/initializeEngine'
-import { EngineSystemPresets, InitializeOptions } from '@xrengine/engine/src/initializationOptions'
-import { useEditorState } from '../services/EditorServices'
-import { Route, Switch } from 'react-router-dom'
-import { useDispatch } from '@xrengine/client-core/src/store'
-import { SystemUpdateType } from '@xrengine/engine/src/ecs/functions/SystemUpdateType'
+import { userHasAccess } from '@xrengine/client-core/src/user/userHasAccess'
+
+import { EditorPage } from './EditorPage'
+import { ProjectPage } from './ProjectPage'
+import { SignInPage } from './SignInPage'
 
 const EditorProtectedRoutes = () => {
-  const [engineIsInitialized, setEngineInitialized] = useState(false)
   const authState = useAuthState()
-  const authUser = authState.authUser
+  const history = useHistory()
   const user = authState.user
-  const dispatch = useDispatch()
-
-  const editorState = useEditorState()
-
-  const initializationOptions: InitializeOptions = {
-    type: EngineSystemPresets.EDITOR,
-    publicPath: location.origin,
-    systems: [
-      {
-        systemModulePromise: import('../managers/SceneManager'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      },
-      {
-        systemModulePromise: import('../systems/InputSystem'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      },
-      {
-        systemModulePromise: import('../systems/FlyControlSystem'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      },
-      {
-        systemModulePromise: import('../systems/EditorControlSystem'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      },
-      {
-        systemModulePromise: import('../systems/EditorCameraSystem'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      },
-      {
-        systemModulePromise: import('../systems/ResetInputSystem'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      },
-      {
-        systemModulePromise: import('../systems/GizmoSystem'),
-        type: SystemUpdateType.PRE_RENDER,
-        sceneSystem: true,
-        args: { enabled: true }
-      }
-    ]
-  }
+  const [isAuthorized, setAuthorized] = useState<boolean | null>(null)
 
   useEffect(() => {
-    AuthService.doLoginAuto(false)
-    initializeEngine(initializationOptions).then(() => {
-      console.log('Setting engine inited')
-      setEngineInitialized(true)
-    })
-  }, [])
+    if (user.scopes.value && user.userRole.value) {
+      const hasAccess = userHasAccess('editor:write')
+      if (!hasAccess) {
+        history.push('/')
+        setAuthorized(false)
+      } else setAuthorized(true)
+    }
+  }, [user.scopes, user.userRole])
 
-  const editorRoute = () => (
-    <>
-      {editorState.projectName.value ? (
-        authUser?.accessToken.value != null &&
-        authUser.accessToken.value.length > 0 &&
-        user?.id.value != null &&
-        engineIsInitialized && <EditorContainer />
-      ) : (
-        <Projects />
-      )}
-    </>
-  )
-
-  // const projectReroute = (props) => {
-  //   if (props?.match?.params?.projectName) dispatch(EditorAction.projectLoaded(props?.match?.params?.projectName))
-  //   if (props?.match?.params?.sceneName) dispatch(EditorAction.sceneLoaded(props?.match?.params?.sceneName))
-  //   useEffect(() => {
-  //     props.history.push('/editor')
-  //   }, [])
-  //   return <></>
-  // }
+  if (isAuthorized == null) return <div>Authorizing...</div>
 
   return (
-    <>
-      <Suspense fallback={React.Fragment}>
-        <Switch>
-          <Route path="/editor/:projectName/:sceneName" component={editorRoute} />
-          <Route path="/editor/:projectName" component={editorRoute} />
-          <Route path="/editor" component={editorRoute} />
-        </Switch>
-      </Suspense>
-    </>
+    <Suspense fallback={React.Fragment}>
+      <Switch>
+        <Route path="/editor/:projectName/:sceneName" component={EditorPage} />
+        <Route path="/editor/:projectName" component={EditorPage} />
+        <Route path="/editor" component={ProjectPage} />
+
+        {/* Not in use */}
+        <Route path="/editor-login" component={SignInPage} />
+      </Switch>
+    </Suspense>
   )
 }
 

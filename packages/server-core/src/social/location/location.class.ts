@@ -1,12 +1,16 @@
-import { Location as LocationType } from '@xrengine/common/src/interfaces/Location'
-import { Service, SequelizeServiceOptions } from 'feathers-sequelize'
-import { Application } from '../../../declarations'
-import { Params } from '@feathersjs/feathers'
-import { extractLoggedInUserFromParams } from '../../user/auth-management/auth-management.utils'
+import { Paginated, Params } from '@feathersjs/feathers'
+import { SequelizeServiceOptions, Service } from 'feathers-sequelize'
 import Sequelize, { Op } from 'sequelize'
 import slugify from 'slugify'
 
-export class Location extends Service {
+import { Location as LocationType } from '@xrengine/common/src/interfaces/Location'
+
+import { Application } from '../../../declarations'
+import { UserDataType } from '../../user/user/user.class'
+
+export type LocationDataType = LocationType
+
+export class Location<T = LocationDataType> extends Service<T> {
   app: Application
   docs: any
 
@@ -65,7 +69,7 @@ export class Location extends Service {
    * @param param0 data of instance
    * @author Vyacheslav Solovjov
    */
-  async createInstances({ id, instance }: { id: any; instance: any }): Promise<any> {
+  async createInstances({ id, instance }: { id: any; instance: any }): Promise<void> {
     if (instance) {
       await instance.forEach((element: any) => {
         if (element.id) {
@@ -119,8 +123,8 @@ export class Location extends Service {
    * @returns {@Array} of all locations
    * @author Vyacheslav Solovjov
    */
-  async find(params: Params): Promise<any> {
-    let { $skip, $limit, $sort, joinableLocations, adminnedLocations, search, ...strippedQuery } = params.query!
+  async find(params?: Params): Promise<T[] | Paginated<T>> {
+    let { $skip, $limit, $sort, joinableLocations, adminnedLocations, search, ...strippedQuery } = params?.query ?? {}
 
     if ($skip == null) $skip = 0
     if ($limit == null) $limit = 10
@@ -128,7 +132,18 @@ export class Location extends Service {
     const order: any[] = []
     if ($sort != null)
       Object.keys($sort).forEach((name, val) => {
-        order.push([name, $sort[name] === -1 ? 'DESC' : 'ASC'])
+        if (name === 'type') {
+          order.push([Sequelize.literal('`location_setting.locationType`'), $sort[name] === 0 ? 'DESC' : 'ASC'])
+        } else if (name === 'instanceMediaChatEnabled') {
+          order.push([
+            Sequelize.literal('`location_setting.instanceMediaChatEnabled`'),
+            $sort[name] === 0 ? 'DESC' : 'ASC'
+          ])
+        } else if (name === 'videoEnabled') {
+          order.push([Sequelize.literal('`location_setting.videoEnabled`'), $sort[name] === 0 ? 'DESC' : 'ASC'])
+        } else {
+          order.push([name, $sort[name] === 0 ? 'DESC' : 'ASC'])
+        }
       })
 
     if (joinableLocations) {
@@ -156,7 +171,8 @@ export class Location extends Service {
             model: (this.app.service('location-ban') as any).Model,
             required: false
           }
-        ]
+        ],
+        subQuery: false
       })
       return {
         skip: $skip,
@@ -165,8 +181,7 @@ export class Location extends Service {
         data: locationResult.rows
       }
     } else if (adminnedLocations) {
-      const loggedInUser = extractLoggedInUserFromParams(params)
-      const selfUser = await this.app.service('user').get(loggedInUser.userId)
+      const loggedInUser = params!.user as UserDataType
       const include = [
         {
           model: (this.app.service('location-settings') as any).Model,
@@ -178,11 +193,11 @@ export class Location extends Service {
         }
       ]
 
-      if (selfUser.userRole !== 'admin') {
+      if (loggedInUser.userRole !== 'admin') {
         ;(include as any).push({
           model: (this.app.service('location-admin') as any).Model,
           where: {
-            userId: loggedInUser.userId
+            userId: loggedInUser.id
           }
         })
       }
@@ -206,7 +221,8 @@ export class Location extends Service {
         limit: $limit,
         where: { ...strippedQuery, ...q },
         order: order,
-        include: include
+        include: include,
+        subQuery: false
       })
       return {
         skip: $skip,
@@ -227,16 +243,16 @@ export class Location extends Service {
    * @returns new location object
    * @author Vyacheslav Solovjov
    */
-  async create(data: LocationType, params: Params): Promise<any> {
+  async create(data: any, params?: Params): Promise<T> {
     const t = await this.app.get('sequelizeClient').transaction()
 
     try {
       // @ts-ignore
       let { location_settings, ...locationData } = data
-      const loggedInUser = extractLoggedInUserFromParams(params)
+      const loggedInUser = params!.user as UserDataType
       locationData.slugifiedName = slugify(locationData.name, { lower: true })
 
-      if (locationData.isLobby) await this.makeLobby(params, t)
+      if (locationData.isLobby) await this.makeLobby(t, params)
 
       const location = await this.Model.create(locationData, { transaction: t })
       await (this.app.service('location-settings') as any).Model.create(
@@ -257,7 +273,7 @@ export class Location extends Service {
         await (this.app.service('location-admin') as any).Model.create(
           {
             locationId: location.id,
-            userId: loggedInUser.userId
+            userId: loggedInUser.id
           },
           { transaction: t }
         )
@@ -265,7 +281,7 @@ export class Location extends Service {
 
       await t.commit()
 
-      return location
+      return location as T
     } catch (err) {
       console.log(err)
       await t.rollback()
@@ -284,7 +300,7 @@ export class Location extends Service {
    * @returns updated location
    * @author Vyacheslav Solovjov
    */
-  async patch(id: string, data: LocationType, params: Params): Promise<any> {
+  async patch(id: string, data: any, params?: Params): Promise<T> {
     const t = await this.app.get('sequelizeClient').transaction()
 
     try {
@@ -299,7 +315,7 @@ export class Location extends Service {
       const oldSettings = old.location_setting ?? old.location_settings
 
       if (locationData.name) locationData.slugifiedName = slugify(locationData.name, { lower: true })
-      if (!old.isLobby && locationData.isLobby) await this.makeLobby(params, t)
+      if (!old.isLobby && locationData.isLobby) await this.makeLobby(t, params)
 
       await this.Model.update(locationData, { where: { id }, transaction: t }) // super.patch(id, locationData, params);
 
@@ -322,7 +338,7 @@ export class Location extends Service {
         include: [(this.app.service('location-settings') as any).Model]
       })
 
-      return location
+      return location as T
     } catch (err) {
       console.log(err)
       await t.rollback()
@@ -341,9 +357,9 @@ export class Location extends Service {
    * @author Vyacheslav Solovjov
    */
 
-  async remove(id: string, params: Params): Promise<any> {
+  async remove(id: string, params?: Params): Promise<T> {
     if (id != null) {
-      const loggedInUser = extractLoggedInUserFromParams(params)
+      const selfUser = params!.user as UserDataType
       const location = await this.app.service('location').get(id)
       if (location.locationSettingsId != null)
         await this.app.service('location-settings').remove(location.locationSettingsId)
@@ -351,19 +367,18 @@ export class Location extends Service {
         await this.app.service('location-admin').remove(null, {
           query: {
             locationId: id,
-            userId: loggedInUser.userId
+            userId: selfUser.id
           }
         })
       } catch (err) {
         console.log('Could not remove location-admin')
       }
     }
-    return super.remove(id)
+    return (await super.remove(id)) as T
   }
 
-  async makeLobby(params: Params, t): Promise<void> {
-    const loggedInUser = extractLoggedInUserFromParams(params)
-    const selfUser = await this.app.service('user').get(loggedInUser.userId)
+  async makeLobby(t, params?: Params): Promise<void> {
+    const selfUser = params!.user as UserDataType
 
     if (!selfUser || selfUser.userRole !== 'admin') throw new Error('Only Admin can set Lobby')
 

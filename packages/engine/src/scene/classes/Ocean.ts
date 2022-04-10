@@ -1,25 +1,32 @@
 import {
-  RepeatWrapping,
-  Mesh,
-  PlaneBufferGeometry,
-  Vector2,
-  Color,
-  MeshPhongMaterial,
   AddOperation,
-  WebGLRenderTarget,
-  DepthTexture,
-  RGBFormat,
-  NearestFilter,
+  Color,
   DepthFormat,
-  UnsignedShortType,
-  Texture,
-  ShaderChunk,
+  DepthTexture,
   EquirectangularReflectionMapping,
+  Mesh,
+  MeshPhongMaterial,
+  NearestFilter,
+  Object3D,
+  PerspectiveCamera,
+  PlaneBufferGeometry,
+  RepeatWrapping,
+  RGBAFormat,
+  Scene,
+  ShaderChunk,
   sRGBEncoding,
-  TextureLoader
+  Texture,
+  UnsignedShortType,
+  Vector2,
+  WebGLRenderer,
+  WebGLRenderTarget
 } from 'three'
-import { TGALoader } from '../../assets/loaders/tga/TGALoader'
-import { Updatable } from '../interfaces/Updatable'
+
+import { AssetLoader } from '../../assets/classes/AssetLoader'
+import { insertAfterString, insertBeforeString } from '../../common/functions/string'
+import { Entity } from '../../ecs/classes/Entity'
+import { Object3DWithEntity } from '../components/Object3DComponent'
+import { addError, removeError } from '../functions/ErrorFunctions'
 
 const vertexUniforms = `uniform float time;
 uniform sampler2D distortionMap;
@@ -104,18 +111,6 @@ vec3 foam( const in vec3 waterColor )
 const pixelData =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='
 
-function insertBeforeString(source, searchTerm, addition) {
-  const position = source.indexOf(searchTerm)
-  return [source.slice(0, position), addition, source.slice(position)].join('\n')
-}
-
-function insertAfterString(source, searchTerm, addition) {
-  const position = source.indexOf(searchTerm)
-  return [source.slice(0, position + searchTerm.length), addition, source.slice(position + searchTerm.length)].join(
-    '\n'
-  )
-}
-
 function addImageProcess(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     let img = new Image()
@@ -125,14 +120,7 @@ function addImageProcess(src: string): Promise<HTMLImageElement> {
   })
 }
 
-function loadTexture(src): Promise<Texture> {
-  const loader = src.endsWith('tga') ? new TGALoader() : new TextureLoader()
-  return new Promise((resolve, reject) => {
-    loader.load(src, resolve, null, (error) => reject(error))
-  })
-}
-
-export class Ocean extends Mesh implements Updatable {
+export class Ocean extends Mesh<PlaneBufferGeometry, MeshPhongMaterial> {
   depthMap: WebGLRenderTarget
   shouldResize: boolean
   _shallowWaterColor: Color
@@ -144,6 +132,7 @@ export class Ocean extends Mesh implements Updatable {
   bigWaveHeight: number
   _bigWaveTiling: Vector2
   _bigWaveSpeed: Vector2
+
   // Small wave
   _waveScale: Vector2
   _waveDistortionSpeed: Vector2
@@ -161,12 +150,14 @@ export class Ocean extends Mesh implements Updatable {
   _normalMap: string
   _distortionMap: string
   _distortionTexture: Texture
+  entity: Entity
 
-  constructor() {
+  constructor(entity: Entity) {
     const planeGeometry = new PlaneBufferGeometry(10, 10, 100, 100)
     super(planeGeometry, new MeshPhongMaterial({ color: 'red' }))
     this.rotation.x = -Math.PI * 0.5
 
+    this.entity = entity
     this.shouldResize = true
     this._shallowWaterColor = new Color()
     this._opacityRange = new Vector2()
@@ -191,7 +182,7 @@ export class Ocean extends Mesh implements Updatable {
     const pixel = await addImageProcess(pixelData)
     const tempTexture = new Texture(pixel)
 
-    const material = this.material as MeshPhongMaterial
+    const material = this.material
     material.normalMap = tempTexture
     material.normalScale = this._waveScale
     material.transparent = true
@@ -270,7 +261,7 @@ export class Ocean extends Mesh implements Updatable {
       )
 
       shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', normal_fragment_maps)
-      ;(this.material as any).userData.shader = shader
+      this.material.userData.shader = shader
     }
   }
 
@@ -278,19 +269,17 @@ export class Ocean extends Mesh implements Updatable {
     const size = new Vector2(window.innerWidth, window.innerHeight)
     this.depthMap = new WebGLRenderTarget(size.x, size.y)
 
-    this.depthMap.texture.format = RGBFormat
     this.depthMap.texture.minFilter = NearestFilter
     this.depthMap.texture.magFilter = NearestFilter
     this.depthMap.texture.generateMipmaps = false
     this.depthMap.stencilBuffer = false
     this.depthMap.depthBuffer = true
     this.depthMap.depthTexture = new DepthTexture(size.x, size.y)
-    this.depthMap.depthTexture.format = DepthFormat
     this.depthMap.depthTexture.type = UnsignedShortType
   }
 
-  onBeforeRender = (renderer, scene, camera) => {
-    const shader = (this.material as any).userData.shader
+  onBeforeRender = (renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) => {
+    const shader = this.material.userData.shader
     shader?.uniforms.cameraNearFar.value.set(camera.near, camera.far)
 
     if (this.shouldResize) {
@@ -315,7 +304,7 @@ export class Ocean extends Mesh implements Updatable {
   }
 
   update(dt: number) {
-    const shader = (this.material as any).userData.shader
+    const shader = this.material.userData.shader
     if (!shader) return
 
     shader.uniforms.distortionMap.value = this._distortionTexture
@@ -335,7 +324,7 @@ export class Ocean extends Mesh implements Updatable {
   }
 
   get _material(): MeshPhongMaterial {
-    return this.material as MeshPhongMaterial
+    return this.material
   }
 
   get distortionMap(): string {
@@ -345,13 +334,16 @@ export class Ocean extends Mesh implements Updatable {
   set distortionMap(path: string) {
     this._distortionMap = path
 
-    loadTexture(path)
+    AssetLoader.loadAsync(path)
       .then((texture) => {
         texture.wrapS = RepeatWrapping
         texture.wrapT = RepeatWrapping
         this._distortionTexture = texture
+        removeError(this.entity, 'distortionMapError')
       })
-      .catch(console.error)
+      .catch((error) => {
+        addError(this.entity, 'distortionMapError', error.message)
+      })
   }
 
   get envMap(): string {
@@ -362,13 +354,16 @@ export class Ocean extends Mesh implements Updatable {
   set envMap(path: string) {
     this._envMap = path
 
-    loadTexture(path)
+    AssetLoader.loadAsync(path)
       .then((texture) => {
         texture.mapping = EquirectangularReflectionMapping
         texture.encoding = sRGBEncoding
         this._material.envMap = texture
+        removeError(this.entity, 'envMapError')
       })
-      .catch(console.error)
+      .catch((error) => {
+        addError(this.entity, 'envMapError', error.message)
+      })
   }
 
   get normalMap(): string {
@@ -378,13 +373,16 @@ export class Ocean extends Mesh implements Updatable {
   set normalMap(path: string) {
     this._normalMap = path
 
-    loadTexture(path)
+    AssetLoader.loadAsync(path)
       .then((texture) => {
         texture.wrapS = RepeatWrapping
         texture.wrapT = RepeatWrapping
         this._material.normalMap = texture
+        removeError(this.entity, 'normalMapError')
       })
-      .catch(console.error)
+      .catch((error) => {
+        addError(this.entity, 'normalMapError', error.message)
+      })
   }
 
   set shininess(value: number) {

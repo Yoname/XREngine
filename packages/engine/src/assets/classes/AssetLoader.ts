@@ -1,28 +1,79 @@
-import { FileLoader, MeshPhysicalMaterial, Object3D, LOD, TextureLoader } from 'three'
-import { getLoader as getGLTFLoader, loadExtentions } from '../functions/LoadGLTF'
-import { FBXLoader } from '../loaders/fbx/FBXLoader'
-import { AssetType } from '../enum/AssetType'
-import { AssetClass } from '../enum/AssetClass'
-import { Entity } from '../../ecs/classes/Entity'
+import {
+  AnimationClip,
+  AudioLoader,
+  FileLoader,
+  Group,
+  Loader,
+  LoaderUtils,
+  LOD,
+  Material,
+  Mesh,
+  MeshPhysicalMaterial,
+  Object3D,
+  SkinnedMesh,
+  TextureLoader
+} from 'three'
+
 import { isAbsolutePath } from '../../common/functions/isAbsolutePath'
+import { isClient } from '../../common/functions/isClient'
 import { Engine } from '../../ecs/classes/Engine'
-import { LODS_REGEXP, DEFAULT_LOD_DISTANCES } from '../constants/LoaderConstants'
-import { instanceGLTF } from '../functions/transformGLTF'
+import { generateMeshBVH } from '../../scene/functions/bvhWorkerPool'
+import { DEFAULT_LOD_DISTANCES, LODS_REGEXP } from '../constants/LoaderConstants'
+import { AssetClass } from '../enum/AssetClass'
+import { AssetType } from '../enum/AssetType'
+import { createGLTFLoader } from '../functions/createGLTFLoader'
+import { FBXLoader } from '../loaders/fbx/FBXLoader'
+import type { GLTF, GLTFLoader } from '../loaders/gltf/GLTFLoader'
+import { TGALoader } from '../loaders/tga/TGALoader'
 
-export const processModelAsset = (asset: any, params: AssetLoaderParamType): void => {
+// import { instanceGLTF } from '../functions/transformGLTF'
+
+/**
+ * Interface for result of the GLTF Asset load.
+ */
+export interface LoadGLTFResultInterface {
+  animations: AnimationClip[]
+  scene: Object3D | Group | Mesh
+  json: any
+  stats: any
+}
+
+// TODO: refactor global scope
+const gltfLoader = createGLTFLoader()
+export function getGLTFLoader(): GLTFLoader {
+  return gltfLoader
+}
+
+export function disposeDracoLoaderWorkers(): void {
+  gltfLoader.dracoLoader?.dispose()
+}
+
+export const loadExtensions = async (gltf: GLTF) => {
+  if (isClient) {
+    const bvhTraverse: Promise<void>[] = []
+    gltf.scene.traverse((mesh) => {
+      bvhTraverse.push(generateMeshBVH(mesh))
+    })
+    await Promise.all(bvhTraverse)
+  }
+}
+
+const processModelAsset = (asset: Mesh): void => {
   const replacedMaterials = new Map()
-  asset.traverse((child) => {
-    if (!child.isMesh) return
+  const loddables = new Array<Object3D>()
 
-    if (typeof params.receiveShadow !== 'undefined') child.receiveShadow = params.receiveShadow
-    if (typeof params.castShadow !== 'undefined') child.castShadow = params.castShadow
+  asset.traverse((child: Mesh<any, Material>) => {
+    //test for LODs within this traversal
+    if (haveAnyLODs(child)) loddables.push(child)
+
+    if (!child.isMesh) return
 
     if (replacedMaterials.has(child.material)) {
       child.material = replacedMaterials.get(child.material)
     } else {
       if (child.material?.userData?.gltfExtensions?.KHR_materials_clearcoat) {
         const newMaterial = new MeshPhysicalMaterial({})
-        newMaterial.setValues(child.material) // to copy properties of original material
+        newMaterial.setValues(child.material as any) // to copy properties of original material
         newMaterial.clearcoat = child.material.userData.gltfExtensions.KHR_materials_clearcoat.clearcoatFactor
         newMaterial.clearcoatRoughness =
           child.material.userData.gltfExtensions.KHR_materials_clearcoat.clearcoatRoughnessFactor
@@ -35,24 +86,17 @@ export const processModelAsset = (asset: any, params: AssetLoaderParamType): voi
   })
   replacedMaterials.clear()
 
-  handleLODs(asset)
-
-  if (asset.children.length) {
-    asset.children.forEach((child) => handleLODs(child))
-  }
+  loddables.forEach((loddable) => handleLODs(loddable))
 }
+
+const haveAnyLODs = (asset) => !!asset.children?.find((c) => String(c.name).match(LODS_REGEXP))
 
 /**
  * Handles Level of Detail for asset.
  * @param asset Asset on which LOD will apply.
  * @returns LOD handled asset.
  */
-export const handleLODs = (asset: Object3D): Object3D => {
-  const haveAnyLODs = !!asset.children?.find((c) => String(c.name).match(LODS_REGEXP))
-  if (!haveAnyLODs) {
-    return asset
-  }
-
+const handleLODs = (asset: Object3D): Object3D => {
   const LODs = new Map<string, { object: Object3D; level: string }[]>()
   asset.children.forEach((child) => {
     const childMatch = child.name.match(LODS_REGEXP)
@@ -89,12 +133,17 @@ export const handleLODs = (asset: Object3D): Object3D => {
  * @param assetFileName Name of the Asset file.
  * @returns Asset type of the file.
  */
-export const getAssetType = (assetFileName: string): AssetType => {
+const getAssetType = (assetFileName: string): AssetType => {
   if (/\.(?:gltf|glb)$/.test(assetFileName)) return AssetType.glTF
   else if (/\.(?:fbx)$/.test(assetFileName)) return AssetType.FBX
   else if (/\.(?:vrm)$/.test(assetFileName)) return AssetType.VRM
+  else if (/\.(?:tga)$/.test(assetFileName)) return AssetType.TGA
   else if (/\.(?:png)$/.test(assetFileName)) return AssetType.PNG
   else if (/\.(?:jpg|jpeg|)$/.test(assetFileName)) return AssetType.JPEG
+  else if (/\.(?:mp3)$/.test(assetFileName)) return AssetType.MP3
+  else if (/\.(?:aac)$/.test(assetFileName)) return AssetType.AAC
+  else if (/\.(?:ogg)$/.test(assetFileName)) return AssetType.OGG
+  else if (/\.(?:m4a)$/.test(assetFileName)) return AssetType.M4A
   return null!
 }
 
@@ -103,136 +152,143 @@ export const getAssetType = (assetFileName: string): AssetType => {
  * @param assetFileName Name of the Asset file.
  * @returns Asset class of the file.
  */
-export const getAssetClass = (assetFileName: string): AssetClass => {
+const getAssetClass = (assetFileName: string): AssetClass => {
   if (/\.(?:gltf|glb|vrm|fbx|obj)$/.test(assetFileName)) {
     return AssetClass.Model
-  } else if (/\.png|jpg|jpeg$/.test(assetFileName)) {
+  } else if (/\.png|jpg|jpeg|tga$/.test(assetFileName)) {
     return AssetClass.Image
+  } else if (/\.mp4|avi|webm|mov$/.test(assetFileName)) {
+    return AssetClass.Video
+  } else if (/\.mp3|ogg|m4a|flac|wav$/.test(assetFileName)) {
+    return AssetClass.Audio
   } else {
     return null!
   }
 }
 
+/**
+ * Returns true if the given file type is supported
+ * Note: images are not supported on node
+ * @param assetFileName
+ * @returns
+ */
+const isSupported = (assetFileName: string) => {
+  const assetClass = getAssetClass(assetFileName)
+  if (isClient) return !!assetClass
+  return assetClass === AssetClass.Model
+}
+
+//@ts-ignore
 const fbxLoader = new FBXLoader()
 const textureLoader = new TextureLoader()
 const fileLoader = new FileLoader()
+const audioLoader = new AudioLoader()
+const tgaLoader = new TGALoader()
 
-const getLoader = (assetType: AssetType) => {
+export const getLoader = (assetType: AssetType) => {
   switch (assetType) {
     case AssetType.glTF:
     case AssetType.VRM:
-      return getGLTFLoader()
+      return gltfLoader
     case AssetType.FBX:
       return fbxLoader
+    case AssetType.TGA:
+      return tgaLoader
     case AssetType.PNG:
     case AssetType.JPEG:
       return textureLoader
+    case AssetType.AAC:
+    case AssetType.MP3:
+    case AssetType.OGG:
+    case AssetType.M4A:
+      return audioLoader
     default:
       return fileLoader
   }
 }
 
-type AssetLoaderParamType = {
-  url: string
-  castShadow?: boolean
-  receiveShadow?: boolean
-  [key: string]: any
+const assetLoadCallback = (url: string, assetType: AssetType, onLoad: (response: any) => void) => async (asset) => {
+  const assetClass = AssetLoader.getAssetClass(url)
+  if (assetClass === AssetClass.Model) {
+    if (assetType === AssetType.glTF || assetType === AssetType.VRM) {
+      await loadExtensions(asset)
+    }
+
+    if (assetType === AssetType.FBX) {
+      asset = { scene: asset }
+    } else if (assetType === AssetType.VRM) {
+      asset = asset.userData.vrm
+    }
+
+    if (asset.scene && !asset.scene.userData) asset.scene.userData = {}
+    if (asset.scene.userData) asset.scene.userData.type = assetType
+    if (asset.userData) asset.userData.type = assetType
+
+    AssetLoader.processModelAsset(asset.scene)
+  }
+
+  AssetLoader.Cache.set(url, asset)
+  onLoad(asset)
 }
 
+const getAbsolutePath = (url) => (isAbsolutePath(url) ? url : Engine.publicPath + url)
+
 const load = async (
-  params: AssetLoaderParamType,
+  _url: string,
   onLoad = (response: any) => {},
   onProgress = (request: ProgressEvent) => {},
-  onError = (event: ErrorEvent | Error) => {},
-  isInstanced = false
+  onError = (event: ErrorEvent | Error) => {}
 ) => {
-  if (!params.url) {
+  if (!_url) {
     onError(new Error('URL is empty'))
     return
   }
-  const url = isAbsolutePath(params.url) ? params.url : Engine.publicPath + params.url
+  const url = getAbsolutePath(_url)
 
   if (AssetLoader.Cache.has(url)) {
     onLoad(AssetLoader.Cache.get(url))
   }
 
-  const assetType = getAssetType(url)
-  const assetClass = getAssetClass(url)
-
+  const assetType = AssetLoader.getAssetType(url)
   const loader = getLoader(assetType)
+  const callback = assetLoadCallback(url, assetType, onLoad)
 
-  if (isInstanced) {
-    let buffer = await instanceGLTF(url)
-    // console.log('instanced loading')
-
-    loader.parse(
-      buffer,
-      null,
-      (asset) => {
-        if (assetType === AssetType.glTF || assetType === AssetType.VRM) {
-          loadExtentions(asset)
-        }
-
-        if (assetClass === AssetClass.Model) {
-          processModelAsset(asset.scene, params)
-        }
-
-        AssetLoader.Cache.set(url, asset)
-
-        onLoad(asset)
-      },
-      onError
-    )
-  } else {
-    // console.log('non instanced loading')
-    loader.load(
-      url,
-      (asset) => {
-        if (assetType === AssetType.glTF || assetType === AssetType.VRM) {
-          loadExtentions(asset)
-        }
-
-        if (assetClass === AssetClass.Model) {
-          processModelAsset(asset.scene, params)
-        }
-
-        AssetLoader.Cache.set(url, asset)
-
-        onLoad(asset)
-      },
-      onProgress,
-      onError
-    )
+  try {
+    // TODO: fix instancing for GLTFs - move this to the gltf loader
+    // if (instanced) {
+    //   ;(loader as GLTFLoader).parse(await instanceGLTF(url), null!, callback, onError)
+    // } else {
+    loader.load(url, callback, onProgress, onError)
+    // }
+  } catch (error) {
+    onError(error)
   }
 }
 
-export class AssetLoader {
-  static Cache = new Map<string, any>()
-  static loaders = new Map<number, any>()
-  static LOD_DISTANCES = DEFAULT_LOD_DISTANCES
+const loadAsync = async (url: string, onProgress = (request: ProgressEvent) => {}) => {
+  return new Promise<any>((resolve, reject) => {
+    load(url, resolve, onProgress, reject)
+  })
+}
 
-  assetType: AssetType
-  assetClass: AssetClass
-  result: any
+// TODO: we are replciating code here, we should refactor AssetLoader to be entirely functional
+const getFromCache = (url: string) => {
+  return AssetLoader.Cache.get(getAbsolutePath(url))
+}
 
-  static load(
-    params: AssetLoaderParamType,
-    onLoad = (response: any) => {},
-    onProgress = (request: ProgressEvent) => {},
-    onError = (event: ErrorEvent | Error) => {},
-    isInstanced = false
-  ) {
-    load(params, onLoad, onProgress, onError, isInstanced)
-  }
-
-  static async loadAsync(params: AssetLoaderParamType) {
-    return new Promise<any>((resolve, reject) => {
-      load(params, resolve, () => {}, resolve)
-    })
-  }
-
-  // TODO: we are replciating code here, we should refactor AssetLoader to be entirely functional
-  static getFromCache(url: string) {
-    return AssetLoader.Cache.get(isAbsolutePath(url) ? url : Engine.publicPath + url)
-  }
+export const AssetLoader = {
+  Cache: new Map<string, any>(),
+  loaders: new Map<number, any>(),
+  LOD_DISTANCES: DEFAULT_LOD_DISTANCES,
+  processModelAsset,
+  handleLODs,
+  getAbsolutePath,
+  getAssetType,
+  getAssetClass,
+  isSupported,
+  getLoader,
+  assetLoadCallback,
+  load,
+  loadAsync,
+  getFromCache
 }

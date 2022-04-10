@@ -1,6 +1,12 @@
+import { iff, isProvider } from 'feathers-hooks-common'
+
+import restrictUserRole from '@xrengine/server-core/src/hooks/restrict-user-role'
+
+import authenticate from '../../hooks/authenticate'
+
 export default {
   before: {
-    all: [],
+    all: [authenticate(), iff(isProvider('external'), restrictUserRole('admin') as any)],
     find: [],
     get: [],
     create: [],

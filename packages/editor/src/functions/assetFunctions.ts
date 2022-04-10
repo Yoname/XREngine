@@ -1,23 +1,24 @@
 import { client } from '@xrengine/client-core/src/feathers'
 import { upload } from '@xrengine/client-core/src/util/upload'
 
-export const uploadProjectAsset = async (
+export const uploadProjectFile = async (
   projectName: string,
   files: File[],
+  isAsset = false,
   onProgress?
 ): Promise<{ url: string }[]> => {
   const promises: Promise<{ url: string }>[] = []
   for (const file of files) {
-    const pathName = `projects/${projectName}/assets`
+    const pathName = `projects/${projectName}${isAsset ? '/assets' : ''}`
     promises.push(
       new Promise(async (resolve) => {
         await upload(file, onProgress, null, {
           uploadPath: pathName,
           fileId: file.name
         })
-        const response = await client.service('project').patch(projectName, {
+        const response = (await client.service('project').patch(projectName, {
           files: [`${pathName}/${file.name}`]
-        })
+        })) as any[]
         resolve({ url: response[0] })
       })
     )
@@ -25,7 +26,7 @@ export const uploadProjectAsset = async (
   return await Promise.all(promises)
 }
 
-export const uploadProjectAssetFromEntries = async (
+export const uploadProjectAssetsFromUpload = async (
   projectName: string,
   entries: FileSystemEntry[],
   onProgress?
@@ -60,9 +61,9 @@ const processEntry = async (item, projectName: string, directory: string, promis
           uploadPath: pathName,
           fileId: file.name
         })
-        const response = await client.service('project').patch(projectName, {
+        const response = (await client.service('project').patch(projectName, {
           files: [`${pathName}/${file.name}`]
-        })
+        })) as any[]
 
         resolve({ url: response[0] })
       })

@@ -1,5 +1,10 @@
+import { Socket } from 'socket.io'
+
+import { accessEngineState } from '@xrengine/engine/src/ecs/classes/EngineService'
 import { MessageTypes } from '@xrengine/engine/src/networking/enums/MessageTypes'
 import { handleNetworkStateUpdate } from '@xrengine/engine/src/networking/functions/updateNetworkState'
+import { WebRtcTransportParams } from '@xrengine/server-core/src/types/WebRtcTransportParams'
+
 import {
   handleConnectToWorld,
   handleDisconnect,
@@ -8,8 +13,7 @@ import {
   handleJoinWorld,
   handleLeaveWorld
 } from './NetworkFunctions'
-import { WebRtcTransportParams } from '@xrengine/server-core/src/types/WebRtcTransportParams'
-import { Socket } from 'socket.io'
+import { SocketWebRTCServerTransport } from './SocketWebRTCServerTransport'
 import {
   handleWebRtcCloseConsumer,
   handleWebRtcCloseProducer,
@@ -28,7 +32,6 @@ import {
   handleWebRtcTransportConnect,
   handleWebRtcTransportCreate
 } from './WebRTCFunctions'
-import { SocketWebRTCServerTransport } from './SocketWebRTCServerTransport'
 
 function isNullOrUndefined<T>(obj: T | null | undefined): obj is null | undefined {
   return typeof obj === 'undefined' || obj === null
@@ -37,31 +40,50 @@ function isNullOrUndefined<T>(obj: T | null | undefined): obj is null | undefine
 export const setupSocketFunctions = (transport: SocketWebRTCServerTransport) => async (socket: Socket) => {
   const app = transport.app
 
+  if (!accessEngineState().joinedWorld.value)
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (accessEngineState().joinedWorld.value) {
+          clearInterval(interval)
+          resolve()
+        }
+      }, 100)
+    })
+
   // Authorize user and make sure everything is valid before allowing them to join the world
   socket.on(MessageTypes.Authorization.toString(), async (data, callback) => {
     console.log('AUTHORIZATION CALL HANDLER', data.userId)
-    const userId = data.userId
     const accessToken = data.accessToken
 
     // userId or access token were undefined, so something is wrong. Return failure
-    if (isNullOrUndefined(userId) || isNullOrUndefined(accessToken)) {
-      const message = 'userId or accessToken is undefined'
+    if (isNullOrUndefined(accessToken)) {
+      const message = 'accessToken is undefined'
       console.error(message)
       callback({ success: false, message })
       return
     }
 
+    const authResult = await (app.service('authentication') as any).strategies.jwt.authenticate(
+      { accessToken: accessToken },
+      {}
+    )
+    const identityProvider = authResult['identity-provider']
+    const userId = identityProvider.userId
+
     // Check database to verify that user ID is valid
-    const user = await (app.service('user') as any).Model.findOne({
-      attributes: ['id', 'name', 'instanceId', 'avatarId'],
-      where: {
-        id: userId
-      }
-    }).catch((error) => {
-      // They weren't found in the dabase, so send the client an error message and return
-      callback({ success: false, message: error })
-      return console.warn('Failed to authorize user')
-    })
+    const user = await app
+      .service('user')
+      .Model.findOne({
+        attributes: ['id', 'name', 'instanceId', 'avatarId'],
+        where: {
+          id: userId
+        }
+      })
+      .catch((error) => {
+        // They weren't found in the dabase, so send the client an error message and return
+        callback({ success: false, message: error })
+        return console.warn('Failed to authorize user')
+      })
 
     // Check database to verify that user ID is valid
     const avatarResources = await app

@@ -1,7 +1,12 @@
-import { loadPhysX } from "./loadPhysX"
 import assert from 'assert'
 
+import { loadPhysX } from './loadPhysX'
+
 describe('loadPhysX', () => {
+  after(() => {
+    delete (globalThis as any).PhysX
+  })
+
   let originalPhysX
   it('should load physx', async () => {
     await loadPhysX()
@@ -21,7 +26,6 @@ describe('loadPhysX', () => {
     delete (globalThis as any).PhysX
     assert.equal((globalThis as any).PhysX, undefined)
   })
-
 
   it('should load physx a second time', async () => {
     await loadPhysX()

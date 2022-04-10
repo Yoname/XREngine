@@ -1,6 +1,7 @@
-export interface ComponentJson {
+export interface ComponentJson<T extends any = any> {
+  // todo: eventually remove '= any'
   name: string
-  props: any
+  props: T
 }
 export interface EntityJson {
   name: string
@@ -16,9 +17,12 @@ export interface SceneJson {
   version: number
 }
 
-export interface SceneDetailInterface {
+export interface SceneMetadata {
   name: string
   thumbnailUrl: string
-  scene?: SceneJson
-  project?: string
+  project: string
+}
+
+export interface SceneData extends SceneMetadata {
+  scene: SceneJson
 }

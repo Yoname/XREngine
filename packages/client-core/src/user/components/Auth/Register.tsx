@@ -1,20 +1,20 @@
+import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import Avatar from '@mui/material/Avatar'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
 import Grid from '@mui/material/Grid'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
+
 import { AuthService } from '../../services/AuthService'
-import React, { useState } from 'react'
-import { useDispatch } from '../../../store'
 import styles from './Auth.module.scss'
-import { useTranslation } from 'react-i18next'
 
 interface Props {}
 
-const SignUp = (props: Props): any => {
-  const dispatch = useDispatch()
+const SignUp = (props: Props): JSX.Element => {
   const initialState = {
     email: '',
     password: '',
@@ -30,12 +30,10 @@ const SignUp = (props: Props): any => {
 
   const handleRegister = (e: any): void => {
     e.preventDefault()
-    dispatch(
-      AuthService.registerUserByEmail({
-        email: state.email,
-        password: state.password
-      })
-    )
+    AuthService.registerUserByEmail({
+      email: state.email,
+      password: state.password
+    })
   }
 
   return (
@@ -101,6 +99,6 @@ const SignUp = (props: Props): any => {
   )
 }
 
-const SignUpWrapper = (props: any): any => <SignUp {...props} />
+const SignUpWrapper = (props: Props): JSX.Element => <SignUp {...props} />
 
 export default SignUpWrapper

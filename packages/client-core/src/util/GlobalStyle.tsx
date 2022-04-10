@@ -1,4 +1,5 @@
 import { createGlobalStyle } from 'styled-components'
+
 import { EditorTheme } from './theme'
 
 /**
@@ -99,19 +100,19 @@ const GlobalStyle = createGlobalStyle<{ theme: EditorTheme }>`
   }
 
   ::selection {
-    color: ${(props) => props.theme.text};
-    background-color: ${(props) => props.theme.selected};
+    color: var(--text);
+    background-color: var(--selected);
   }
 
   a {
-    color: ${(props) => props.theme.text};
+    color: var(--text);
 
     &:hover {
-      color: ${(props) => props.theme.blueHover};
+      color: var(--blueHover);
     }
 
     &:active {
-      color: ${(props) => props.theme.bluePressed};
+      color: var(--bluePressed);
     }
   }
 
@@ -133,37 +134,11 @@ const GlobalStyle = createGlobalStyle<{ theme: EditorTheme }>`
   }
 
   body {
-    font-family: ${(props) => props.theme.lato};
+    font-family: var(--lato);
     font-size: 12px;
-    color: ${(props) => props.theme.text};
-    background-color: ${(props) => props.theme.background};
+    color: var(--text);
+    background-color: var(--background);
     scrollbar-color: #282c31 #5d646c;
-  }
-
-  .Modal {
-    position: absolute;
-    display: flex;
-    flex: 1;
-    outline: none;
-    max-height: 100%;
-    box-shadow: ${(props) => props.theme.shadow30};
-    margin-bottom: 10vh;
-  }
-
-  .Overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: rgba(0, 0, 0, 0.5);
-  }
-
-  .ReactModal__Overlay--after-open {
-    z-index: 100;
   }
 
   .sentry-error-embed {

@@ -1,14 +1,15 @@
 /**
  * @author Gleb Ordinsky <glebordinskijj@gmail.com>
  */
+import { createState, useState } from '@speigg/hookstate'
+
 import { AlertService } from '../../common/services/AlertService'
 import { useDispatch } from '../../store'
-import { createState, useState } from '@hookstate/core'
 import { store } from '../../store'
 
 //State
 const state = createState({
-  webxrnative: null
+  webxrnative: false
 })
 
 store.receptors.push((action: WebxrNativeActionType): any => {
@@ -30,23 +31,21 @@ export const WebxrNativeService = {
   getWebXrNative: () => {
     console.log('getWebXrNative Service')
     const dispatch = useDispatch()
-    {
-      try {
-        dispatch(WebxrNativeAction.setWebXrNative())
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+
+    try {
+      dispatch(WebxrNativeAction.setWebXrNative())
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   },
   changeWebXrNative: () => {
     console.log('changeWebXrNative Service')
     const dispatch = useDispatch()
-    {
-      try {
-        dispatch(WebxrNativeAction.tougleWebXrNative())
-      } catch (err) {
-        AlertService.dispatchAlertError(err)
-      }
+
+    try {
+      dispatch(WebxrNativeAction.tougleWebXrNative())
+    } catch (err) {
+      AlertService.dispatchAlertError(err)
     }
   }
 }

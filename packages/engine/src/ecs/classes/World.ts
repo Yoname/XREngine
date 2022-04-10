@@ -1,5 +1,20 @@
+import * as bitecs from 'bitecs'
+
+import { NetworkId } from '@xrengine/common/src/interfaces/NetworkId'
+import { ComponentJson } from '@xrengine/common/src/interfaces/SceneInterface'
+import { HostUserId, UserId } from '@xrengine/common/src/interfaces/UserId'
+
+import { AvatarComponent } from '../../avatar/components/AvatarComponent'
+import { SceneLoaderType } from '../../common/constants/PrefabFunctionType'
 import { isClient } from '../../common/functions/isClient'
-import { Action } from '../../networking/interfaces/Action'
+import { nowMilliseconds } from '../../common/functions/nowMilliseconds'
+import { Network } from '../../networking/classes/Network'
+import { NetworkObjectComponent } from '../../networking/components/NetworkObjectComponent'
+import { NetworkClient } from '../../networking/interfaces/NetworkClient'
+import { Physics } from '../../physics/classes/Physics'
+import { PersistTagComponent } from '../../scene/components/PersistTagComponent'
+import { PortalComponent } from '../../scene/components/PortalComponent'
+import { Action } from '../functions/Action'
 import {
   addComponent,
   defineQuery,
@@ -8,28 +23,12 @@ import {
   hasComponent
 } from '../functions/ComponentFunctions'
 import { createEntity } from '../functions/EntityFunctions'
-import { SystemFactoryType, SystemModuleType } from '../functions/SystemFunctions'
-import { Entity } from './Entity'
-import { System } from './System'
-import { Engine } from './Engine'
-import * as bitecs from 'bitecs'
-import { AvatarComponent } from '../../avatar/components/AvatarComponent'
-import { NetworkObjectComponent } from '../../networking/components/NetworkObjectComponent'
-import { Physics } from '../../physics/classes/Physics'
-import { HostUserId, UserId } from '@xrengine/common/src/interfaces/UserId'
-import { NetworkId } from '@xrengine/common/src/interfaces/NetworkId'
-import { NetworkClient } from '../../networking/interfaces/NetworkClient'
+import { initializeEntityTree } from '../functions/EntityTreeFunctions'
+import { SystemInstanceType, SystemModuleType } from '../functions/SystemFunctions'
 import { SystemUpdateType } from '../functions/SystemUpdateType'
-import { WorldStateInterface } from '../../networking/schema/networkSchema'
-import { PersistTagComponent } from '../../scene/components/PersistTagComponent'
-import { PortalComponent } from '../../scene/components/PortalComponent'
-
-type SystemInstanceType = {
-  name: string
-  type: SystemUpdateType
-  sceneSystem: boolean
-  execute: System
-}
+import { Engine } from './Engine'
+import { Entity } from './Entity'
+import EntityTree from './EntityTree'
 
 type RemoveIndex<T> = {
   [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K]
@@ -40,10 +39,15 @@ export class World {
   private constructor() {
     bitecs.createWorld(this)
     Engine.worlds.push(this)
+
     this.worldEntity = createEntity(this)
     this.localClientEntity = isClient ? (createEntity(this) as Entity) : (NaN as Entity)
+
     if (!Engine.currentWorld) Engine.currentWorld = this
+
     addComponent(this.worldEntity, PersistTagComponent, {}, this)
+
+    initializeEntityTree(this)
   }
 
   static [CreateWorld] = () => new World()
@@ -61,7 +65,7 @@ export class World {
 
   physics = new Physics()
 
-  #entityQuery = bitecs.defineQuery([])
+  #entityQuery = bitecs.defineQuery([bitecs.Not(EntityRemovedComponent)])
   entityQuery = () => this.#entityQuery(this) as Entity[]
 
   #entityRemovedQuery = bitecs.defineQuery([EntityRemovedComponent])
@@ -69,7 +73,7 @@ export class World {
   #portalQuery = bitecs.defineQuery([PortalComponent])
   portalQuery = () => this.#portalQuery(this) as Entity[]
 
-  isInPortal = false
+  activePortal = null! as ReturnType<typeof PortalComponent.get>
 
   /** Connected clients */
   clients = new Map() as Map<UserId, NetworkClient>
@@ -86,8 +90,13 @@ export class World {
   /** All actions that have been dispatched */
   actionHistory = new Set<Action>()
 
-  outgoingNetworkState: WorldStateInterface
-  previousNetworkState: WorldStateInterface
+  /** Map of numerical user index to user client IDs */
+  userIndexToUserId = new Map<number, UserId>()
+
+  /** Map of user client IDs to numerical user index */
+  userIdToUserIndex = new Map<UserId, number>()
+
+  userIndexCount = 0
 
   /**
    * Check if this user is hosting the world.
@@ -132,6 +141,15 @@ export class World {
    * Network object query
    */
   networkObjectQuery = defineQuery([NetworkObjectComponent])
+
+  /** Tree of entity holding parent child relation between entities. */
+  entityTree: EntityTree
+
+  /** Registry map of scene loader components  */
+  sceneLoadingRegistry = new Map<string, SceneLoaderType>()
+
+  /** Registry map of prefabs  */
+  scenePrefabRegistry = new Map<string, ComponentJson[]>()
 
   /**
    * Get the network objects owned by a given user
@@ -183,50 +201,30 @@ export class World {
    * @param elapsedTime
    */
   execute(delta: number, elapsedTime: number) {
+    const start = nowMilliseconds()
+    const incomingActions = Array.from(this.incomingActions.values())
+    const incomingBufferLength = Network.instance?.incomingMessageQueueUnreliable.getBufferLength()
+
     this.delta = delta
     this.elapsedTime = elapsedTime
+
     for (const system of this.pipelines[SystemUpdateType.UPDATE]) system.execute()
     for (const system of this.pipelines[SystemUpdateType.PRE_RENDER]) system.execute()
     for (const system of this.pipelines[SystemUpdateType.POST_RENDER]) system.execute()
-    for (const entity of this.#entityRemovedQuery(this)) bitecs.removeEntity(this, entity)
-  }
 
-  async initSystems(systemModulesToLoad: SystemModuleType<any>[] = this._pipeline) {
-    const loadSystem = async (s: SystemFactoryType<any>) => {
-      const system = await s.systemModule.default(this, s.args)
-      return {
-        name: s.systemModule.default.name,
-        type: s.type,
-        sceneSystem: s.sceneSystem,
-        execute: () => {
-          try {
-            system()
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      } as SystemInstanceType
+    for (const entity of this.#entityRemovedQuery(this)) bitecs.removeEntity(this, entity)
+
+    const end = nowMilliseconds()
+    const duration = end - start
+    if (duration > 50) {
+      console.warn(
+        `Long frame execution detected. Delta: ${delta} \n Duration: ${duration}. \n Incoming Buffer Length: ${incomingBufferLength} \n Incoming actions: `,
+        incomingActions
+      )
     }
-    const systemModule = await Promise.all(
-      systemModulesToLoad.map(async (s) => {
-        return {
-          args: s.args,
-          type: s.type,
-          sceneSystem: s.sceneSystem,
-          systemModule: await s.systemModulePromise
-        }
-      })
-    )
-    const systems = await Promise.all(systemModule.map(loadSystem))
-    systems.forEach((s) => {
-      this.pipelines[s.type].push(s)
-      console.log(`${s.type} ${s.name}`)
-    })
-    console.log('[World]: All systems initialized!')
   }
 }
 
 export function createWorld() {
-  console.log('Creating world')
   return World[CreateWorld]()
 }

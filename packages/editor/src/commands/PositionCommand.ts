@@ -1,13 +1,20 @@
-import Command, { CommandParams } from './Command'
-import { serializeVector3, serializeObject3D } from '../functions/debug'
-import { CommandManager } from '../managers/CommandManager'
 import { Matrix4, Vector3 } from 'three'
-import EditorEvents from '../constants/EditorEvents'
-import arrayShallowEqual from '../functions/arrayShallowEqual'
+
+import { store } from '@xrengine/client-core/src/store'
+import { EntityTreeNode } from '@xrengine/engine/src/ecs/classes/EntityTree'
+import { getComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { Object3DComponent } from '@xrengine/engine/src/scene/components/Object3DComponent'
 import { TransformSpace } from '@xrengine/engine/src/scene/constants/transformConstants'
+import { TransformComponent } from '@xrengine/engine/src/transform/components/TransformComponent'
+
+import arrayShallowEqual from '../functions/arrayShallowEqual'
+import { serializeObject3D, serializeVector3 } from '../functions/debug'
+import { EditorAction } from '../services/EditorServices'
+import { accessSelectionState, SelectionAction } from '../services/SelectionServices'
+import Command, { CommandParams } from './Command'
 
 export interface PositionCommandParams extends CommandParams {
-  positions?: Vector3 | Vector3[]
+  positions: Vector3 | Vector3[]
 
   space?: TransformSpace
 
@@ -21,24 +28,22 @@ export default class PositionCommand extends Command {
 
   space: TransformSpace
 
-  oldPositions: any
+  oldPositions?: Vector3[]
 
-  constructor(objects?: any | any[], params?: PositionCommandParams) {
+  constructor(objects: EntityTreeNode[], params: PositionCommandParams) {
     super(objects, params)
 
-    if (!Array.isArray(objects)) objects = [objects]
-    if (!Array.isArray(params.positions)) params.positions = [params.positions]
-
-    this.affectedObjects = objects
-    this.positions = params.positions
+    this.positions = Array.isArray(params.positions) ? params.positions : [params.positions]
     this.space = params.space ?? TransformSpace.Local
     this.addToPosition = params.addToPosition
-    this.oldPositions = objects.map((o) => o.position.clone())
+
+    if (this.keepHistory) {
+      this.oldPositions = objects.map((o) => getComponent(o.entity, TransformComponent).position.clone())
+    }
   }
 
   execute() {
     this.updatePosition(this.affectedObjects, this.positions, this.space)
-
     this.emitAfterExecuteEvent()
   }
 
@@ -48,11 +53,12 @@ export default class PositionCommand extends Command {
 
   update(command: PositionCommand) {
     this.positions = command.positions
-    this.updatePosition(this.affectedObjects, command.positions, this.space)
-    this.emitAfterExecuteEvent()
+    this.execute()
   }
 
   undo() {
+    if (!this.oldPositions) return
+
     this.updatePosition(this.affectedObjects, this.oldPositions, TransformSpace.Local, true)
     this.emitAfterExecuteEvent()
   }
@@ -65,21 +71,27 @@ export default class PositionCommand extends Command {
 
   emitAfterExecuteEvent() {
     if (this.shouldEmitEvent) {
-      CommandManager.instance.emitEvent(EditorEvents.OBJECTS_CHANGED, this.affectedObjects, 'position')
+      store.dispatch(EditorAction.sceneModified(true))
+      store.dispatch(SelectionAction.changedObject(this.affectedObjects, 'position'))
     }
   }
 
-  updatePosition(objects: any[], positions: Vector3[], space: TransformSpace, isUndo?: boolean): void {
+  updatePosition(objects: EntityTreeNode[], positions: Vector3[], space: TransformSpace, isUndo?: boolean): void {
     const tempMatrix = new Matrix4()
     const tempVector = new Vector3()
 
+    let obj3d
+    let transformComponent
     let spaceMatrix
 
+    const selectedEntities = accessSelectionState().selectedEntities.value
+
     if (space === TransformSpace.LocalSelection) {
-      if (CommandManager.instance.selected.length > 0) {
-        const lastSelectedObject = CommandManager.instance.selected[CommandManager.instance.selected.length - 1]
-        lastSelectedObject.updateMatrixWorld()
-        spaceMatrix = lastSelectedObject.parent.matrixWorld
+      if (selectedEntities.length > 0) {
+        const lastSelectedEntity = selectedEntities[selectedEntities.length - 1]
+        obj3d = getComponent(lastSelectedEntity, Object3DComponent).value
+        obj3d.updateMatrixWorld()
+        spaceMatrix = obj3d.parent!.matrixWorld
       } else {
         spaceMatrix = tempMatrix.identity()
       }
@@ -88,28 +100,26 @@ export default class PositionCommand extends Command {
     for (let i = 0; i < objects.length; i++) {
       const object = objects[i]
       const pos = positions[i] ?? positions[0]
+      obj3d = getComponent(object.entity, Object3DComponent).value
+      transformComponent = getComponent(object.entity, TransformComponent)
 
       if (space === TransformSpace.Local) {
-        if (this.addToPosition && !isUndo) object.position.add(pos)
-        else object.position.copy(pos)
+        if (this.addToPosition && !isUndo) transformComponent.position.add(pos)
+        else transformComponent.position.copy(pos)
       } else {
-        object.updateMatrixWorld() // Update parent world matrices
+        obj3d.updateMatrixWorld() // Update parent world matrices
 
         if (this.addToPosition && !isUndo) {
-          tempVector.setFromMatrixPosition(object.matrixWorld)
+          tempVector.setFromMatrixPosition(obj3d.matrixWorld)
           tempVector.add(pos)
         }
 
-        let _spaceMatrix = space === TransformSpace.World ? object.parent.matrixWorld : spaceMatrix
+        let _spaceMatrix = space === TransformSpace.World ? obj3d.parent.matrixWorld : spaceMatrix
 
         tempMatrix.copy(_spaceMatrix).invert()
         tempVector.applyMatrix4(tempMatrix)
-        object.position.copy(tempVector)
+        transformComponent.position.copy(tempVector)
       }
-
-      object.updateMatrixWorld(true)
-
-      object.onChange('position')
     }
   }
 }

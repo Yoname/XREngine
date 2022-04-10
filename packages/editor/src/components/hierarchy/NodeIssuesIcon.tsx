@@ -1,8 +1,10 @@
 import React, { useCallback, useContext, useMemo } from 'react'
-import styled, { ThemeContext } from 'styled-components'
-import Tooltip from '../layout/Tooltip'
 import { useTranslation } from 'react-i18next'
+import styled, { ThemeContext } from 'styled-components'
+
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+
+import Tooltip from '../layout/Tooltip'
 
 /**
  * IssuesTooltipContainer used to provide styles and showing issues list.
@@ -44,6 +46,9 @@ const IssuesTooltipContainer = (styled as any).div`
  * @param {styled component} styled
  */
 const IssueIcon = (styled as any)(ErrorOutlineIcon)`
+  width: 16px;
+  height: auto;
+  font-size: inherit;
   color: ${(props) => props.color};
 `
 
@@ -77,7 +82,7 @@ export function NodeIssuesIcon({ node }) {
       <IssuesTooltipContainer>
         <h6>{t('editor:hierarchy.isseus')}</h6>
         <ul>
-          {node.issues.map((issue, i) => {
+          {node.map((issue, i) => {
             return (
               <li key={i}>
                 <IssueIcon size={12} color={severityToColor[issue.severity]} /> {issue.message}
@@ -91,7 +96,7 @@ export function NodeIssuesIcon({ node }) {
 
   let maxSeverity = 'warning'
 
-  for (const issue of node.issues) {
+  for (const issue of node) {
     if (issue.severity === 'error') {
       maxSeverity = 'error'
       break
@@ -99,8 +104,8 @@ export function NodeIssuesIcon({ node }) {
   }
 
   return (
-    <Tooltip renderContent={renderInfo}>
-      <IssueIcon size={14} color={severityToColor[maxSeverity]} />
+    <Tooltip title={renderInfo()}>
+      <IssueIcon color={severityToColor[maxSeverity]} />
     </Tooltip>
   )
 }

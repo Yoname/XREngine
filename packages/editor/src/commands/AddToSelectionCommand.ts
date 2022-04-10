@@ -1,43 +1,45 @@
-import Command, { CommandParams } from './Command'
-import { serializeObject3DArray } from '../functions/debug'
+import { store } from '@xrengine/client-core/src/store'
+import { EntityTreeNode } from '@xrengine/engine/src/ecs/classes/EntityTree'
+import { addComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { getEntityNodeArrayFromEntities } from '@xrengine/engine/src/ecs/functions/EntityTreeFunctions'
+import { SelectTagComponent } from '@xrengine/engine/src/scene/components/SelectTagComponent'
+
+import { executeCommand } from '../classes/History'
 import EditorCommands from '../constants/EditorCommands'
-import { CommandManager } from '../managers/CommandManager'
-import EditorEvents from '../constants/EditorEvents'
+import { cancelGrabOrPlacement } from '../functions/cancelGrabOrPlacement'
+import { serializeObject3DArray } from '../functions/debug'
+import { updateOutlinePassSelection } from '../functions/updateOutlinePassSelection'
+import { accessSelectionState, SelectionAction } from '../services/SelectionServices'
+import Command, { CommandParams } from './Command'
 
 export default class AddToSelectionCommand extends Command {
-  constructor(objects?: any | any[], params?: CommandParams) {
+  constructor(objects: EntityTreeNode[], params: CommandParams) {
     super(objects, params)
 
-    if (!Array.isArray(objects)) {
-      objects = [objects]
-    }
-
-    this.affectedObjects = objects.slice(0)
-    this.oldSelection = CommandManager.instance.selected.slice(0)
+    if (this.keepHistory) this.oldSelection = accessSelectionState().selectedEntities.value.slice(0)
   }
 
   execute() {
     this.emitBeforeExecuteEvent()
 
+    const selectedEntities = accessSelectionState().selectedEntities.value.slice(0)
+
     for (let i = 0; i < this.affectedObjects.length; i++) {
       const object = this.affectedObjects[i]
+      if (selectedEntities.includes(object.entity)) continue
 
-      if (object.isNode && CommandManager.instance.selected.indexOf(object) > -1) {
-        object.onSelect()
-      }
-
-      CommandManager.instance.selected.push(object)
+      addComponent(object.entity, SelectTagComponent, {})
+      selectedEntities.push(object.entity)
     }
 
-    if (this.shouldGizmoUpdate) {
-      CommandManager.instance.updateTransformRoots()
-    }
+    store.dispatch(SelectionAction.updateSelection(selectedEntities))
 
     this.emitAfterExecuteEvent()
   }
 
   undo() {
-    CommandManager.instance.executeCommand(EditorCommands.REPLACE_SELECTION, this.oldSelection)
+    if (!this.oldSelection) return
+    executeCommand(EditorCommands.REPLACE_SELECTION, getEntityNodeArrayFromEntities(this.oldSelection))
   }
 
   toString() {
@@ -45,10 +47,15 @@ export default class AddToSelectionCommand extends Command {
   }
 
   emitAfterExecuteEvent() {
-    if (this.shouldEmitEvent) CommandManager.instance.emitEvent(EditorEvents.SELECTION_CHANGED)
+    if (this.shouldEmitEvent) {
+      updateOutlinePassSelection()
+    }
   }
 
   emitBeforeExecuteEvent() {
-    if (this.shouldEmitEvent) CommandManager.instance.emitEvent(EditorEvents.BEFORE_SELECTION_CHANGED)
+    if (this.shouldEmitEvent) {
+      cancelGrabOrPlacement()
+      store.dispatch(SelectionAction.changedBeforeSelection())
+    }
   }
 }

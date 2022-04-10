@@ -1,16 +1,17 @@
-import { useStorageProvider } from '../../media/storageprovider/storageprovider'
-import { getFileKeysRecursive } from '../../media/storageprovider/storageProviderUtils'
+import appRootPath from 'app-root-path'
 import fs from 'fs'
 import path from 'path'
+
+import { useStorageProvider } from '../../media/storageprovider/storageprovider'
+import { getFileKeysRecursive } from '../../media/storageprovider/storageProviderUtils'
 import { deleteFolderRecursive, writeFileSyncRecursive } from '../../util/fsHelperFunctions'
-import appRootPath from 'app-root-path'
 
 const storageProvider = useStorageProvider()
 
 export const download = async (projectName) => {
   try {
     console.log('[ProjectLoader]: Installing project', projectName, '...')
-    const files = await getFileKeysRecursive(`projects/${projectName}`)
+    const files = await getFileKeysRecursive(`projects/${projectName}/`)
     console.log('[ProjectLoader]: Found files', files)
 
     const localProjectDirectory = path.join(appRootPath.path, 'packages/projects/projects', projectName)
@@ -19,14 +20,17 @@ export const download = async (projectName) => {
       deleteFolderRecursive(localProjectDirectory)
     }
 
-    for (const filePath of files) {
-      console.log(`[ProjectLoader]: - downloading "${filePath}"`)
-      const fileResult = await storageProvider.getObject(filePath)
-      if (fileResult.Body.length === 0) {
-        console.log(`[ProjectLoader]: WARNING file "${filePath}" is empty`)
-      }
-      writeFileSyncRecursive(path.join(appRootPath.path, 'packages/projects', filePath), fileResult.Body)
-    }
+    await Promise.all(
+      files.map(async (filePath) => {
+        console.log(`[ProjectLoader]: - downloading "${filePath}"`)
+        const fileResult = await storageProvider.getObject(filePath)
+
+        if (fileResult.Body.length === 0) {
+          console.log(`[ProjectLoader]: WARNING file "${filePath}" is empty`)
+        }
+        writeFileSyncRecursive(path.join(appRootPath.path, 'packages/projects', filePath), fileResult.Body)
+      })
+    )
 
     console.log('[ProjectLoader]: Successfully downloaded and mounted project', projectName)
   } catch (e) {

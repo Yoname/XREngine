@@ -1,24 +1,33 @@
-import React, { useEffect } from 'react'
-import { Mic, VolumeUp, BlurLinear } from '@mui/icons-material'
+import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { UserSetting } from '@xrengine/common/src/interfaces/User'
+import { dispatchLocal } from '@xrengine/engine/src/networking/functions/dispatchFrom'
+import { EngineRendererAction, useEngineRendererState } from '@xrengine/engine/src/renderer/EngineRendererState'
+
+import { BlurLinear, Mic, VolumeUp } from '@mui/icons-material'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Slider from '@mui/material/Slider'
 import Typography from '@mui/material/Typography'
+
+import { AuthService, useAuthState } from '../../../services/AuthService'
 import styles from '../UserMenu.module.scss'
-import { EngineRendererAction, useEngineRendererState } from '@xrengine/engine/src/renderer/EngineRendererState'
-import { useTranslation } from 'react-i18next'
-import { UserSetting } from '@xrengine/common/src/interfaces/User'
-import { dispatchLocal } from '@xrengine/engine/src/networking/functions/dispatchFrom'
-import { EngineRenderer } from '@xrengine/engine/src/renderer/WebGLRendererSystem'
 
-type Props = {
-  setting: UserSetting
-  setUserSettings: (settings: Partial<UserSetting>) => void
-}
-
-const SettingMenu = (props: Props): JSX.Element => {
+const SettingMenu = (): JSX.Element => {
   const { t } = useTranslation()
   const rendererState = useEngineRendererState()
+
+  const authState = useAuthState()
+  const selfUser = authState.user
+  const [userSettings, setUserSetting] = useState<UserSetting>(selfUser?.user_setting.value!)
+
+  const setUserSettings = (newSetting: any): void => {
+    const setting = { ...userSettings, ...newSetting }
+    setUserSetting(setting)
+    AuthService.updateUserSettings(selfUser.user_setting.value?.id, setting)
+  }
+
   return (
     <div className={styles.menuPanel}>
       <div className={styles.settingPanel}>
@@ -32,9 +41,9 @@ const SettingMenu = (props: Props): JSX.Element => {
             </span>
             <span className={styles.settingLabel}>{t('user:usermenu.setting.lbl-volume')}</span>
             <Slider
-              value={props.setting?.volume == null ? 100 : props.setting?.volume}
+              value={userSettings?.volume == null ? 100 : userSettings?.volume}
               onChange={(_, value: number) => {
-                props.setUserSettings({ volume: value })
+                setUserSettings({ volume: value })
                 const mediaElements = document.querySelectorAll<HTMLMediaElement>('video, audio')
                 for (let i = 0; i < mediaElements.length; i++) {
                   mediaElements[i].volume = (value as number) / 100
@@ -51,9 +60,9 @@ const SettingMenu = (props: Props): JSX.Element => {
             </span>
             <span className={styles.settingLabel}>{t('user:usermenu.setting.lbl-microphone')}</span>
             <Slider
-              value={props.setting?.microphone == null ? 100 : props.setting?.microphone}
+              value={userSettings?.microphone == null ? 100 : userSettings?.microphone}
               onChange={(_, value: number) => {
-                props.setUserSettings({ microphone: value })
+                setUserSettings({ microphone: value })
               }}
               className={styles.slider}
               max={100}
@@ -86,7 +95,7 @@ const SettingMenu = (props: Props): JSX.Element => {
             <FormControlLabel
               className={styles.checkboxBlock}
               control={<Checkbox checked={rendererState.usePostProcessing.value} size="small" />}
-              label={t('user:usermenu.setting.lbl-pp')}
+              label={t('user:usermenu.setting.lbl-pp') as string}
               onChange={(_, value) => {
                 dispatchLocal(EngineRendererAction.setPostProcessing(value))
                 dispatchLocal(EngineRendererAction.setAutomatic(false))
@@ -105,7 +114,7 @@ const SettingMenu = (props: Props): JSX.Element => {
             <FormControlLabel
               className={styles.checkboxBlock}
               control={<Checkbox checked={rendererState.useShadows.value} size="small" />}
-              label={t('user:usermenu.setting.lbl-shadow')}
+              label={t('user:usermenu.setting.lbl-shadow') as string}
               onChange={(_, value) => {
                 dispatchLocal(EngineRendererAction.setShadows(value))
                 dispatchLocal(EngineRendererAction.setAutomatic(false))
@@ -116,7 +125,7 @@ const SettingMenu = (props: Props): JSX.Element => {
             <FormControlLabel
               className={styles.checkboxBlock}
               control={<Checkbox checked={rendererState.automatic.value} size="small" />}
-              label={t('user:usermenu.setting.lbl-automatic')}
+              label={t('user:usermenu.setting.lbl-automatic') as string}
               labelPlacement="start"
               onChange={(_, value) => {
                 dispatchLocal(EngineRendererAction.setAutomatic(value))

@@ -1,16 +1,17 @@
-import { EngineEvents } from '../../ecs/classes/EngineEvents'
-import { localAudioConstraints, localVideoConstraints } from '../constants/VideoConstants'
-import { Network } from '../classes/Network'
-import { isClient } from '../../common/functions/isClient'
-import { getNearbyUsers, NearbyUser } from '../functions/getNearbyUsers'
-import { World } from '../../ecs/classes/World'
-import { System } from '../../ecs/classes/System'
-import { Engine } from '../../ecs/classes/Engine'
 import { ChannelType } from '@xrengine/common/src/interfaces/Channel'
+
+import { isClient } from '../../common/functions/isClient'
+import { Engine } from '../../ecs/classes/Engine'
+import { EngineEvents } from '../../ecs/classes/EngineEvents'
+import { World } from '../../ecs/classes/World'
+import { Network } from '../classes/Network'
+import { localAudioConstraints, localVideoConstraints } from '../constants/VideoConstants'
+import { getNearbyUsers, NearbyUser } from '../functions/getNearbyUsers'
 
 /** System class for media streaming. */
 export class MediaStreams {
   static EVENTS = {
+    TRIGGER_REQUEST_CURRENT_PRODUCERS: 'NETWORK_TRANSPORT_EVENT_REQUEST_CURRENT_PRODUCERS',
     TRIGGER_UPDATE_CONSUMERS: 'NETWORK_TRANSPORT_EVENT_UPDATE_CONSUMERS',
     CLOSE_CONSUMER: 'NETWORK_TRANSPORT_EVENT_CLOSE_CONSUMER',
     UPDATE_NEARBY_LAYER_USERS: 'NETWORK_TRANSPORT_EVENT_UPDATE_NEARBY_LAYER_USERS'
@@ -151,13 +152,13 @@ export class MediaStreams {
    * @returns Whether the camera is started or not. */
   async startCamera(): Promise<boolean> {
     console.log('start camera')
-    if (this.videoStream) return false
+    if (this.videoStream?.active) return false
     return await this.getVideoStream()
   }
 
   async startMic(): Promise<boolean> {
     console.log('start Mic')
-    if (this.audioStream) return false
+    if (this.audioStream?.active) return false
     return await this.getAudioStream()
   }
 
@@ -303,6 +304,7 @@ export class MediaStreams {
 
 export const updateNearbyAvatars = () => {
   MediaStreams.instance.nearbyLayerUsers = getNearbyUsers(Engine.userId)
+  if (!MediaStreams.instance.nearbyLayerUsers.length) return
   const nearbyUserIds = MediaStreams.instance.nearbyLayerUsers.map((user) => user.id)
   EngineEvents.instance.dispatchEvent({ type: MediaStreams.EVENTS.UPDATE_NEARBY_LAYER_USERS })
   MediaStreams.instance.consumers.forEach((consumer) => {
@@ -313,14 +315,14 @@ export const updateNearbyAvatars = () => {
 }
 
 // every 5 seconds
-const NEARYBY_AVATAR_UPDATE_PERIOD = 60 * 5
+const NEARBY_AVATAR_UPDATE_PERIOD = 60 * 5
 
-export default async function MediaStreamSystem(world: World): Promise<System> {
+export default async function MediaStreamSystem() {
   let nearbyAvatarTick = 0
   let executeInProgress = false
 
   return () => {
-    if (Network.instance.mediasoupOperationQueue.getBufferLength() > 0 && executeInProgress === false) {
+    if (Network.instance.mediasoupOperationQueue.getBufferLength() > 0 && !executeInProgress) {
       executeInProgress = true
       const buffer = Network.instance.mediasoupOperationQueue.pop() as any
       if (buffer.object && buffer.object.closed !== true && buffer.object._closed !== true) {
@@ -341,9 +343,9 @@ export default async function MediaStreamSystem(world: World): Promise<System> {
 
     if (isClient) {
       nearbyAvatarTick++
-      if (nearbyAvatarTick > NEARYBY_AVATAR_UPDATE_PERIOD) {
+      if (nearbyAvatarTick > NEARBY_AVATAR_UPDATE_PERIOD) {
         nearbyAvatarTick = 0
-        if (MediaStreams.instance.channelType === 'instance') updateNearbyAvatars()
+        updateNearbyAvatars()
       }
     }
   }

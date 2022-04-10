@@ -1,7 +1,9 @@
-import { createState, useState } from '@hookstate/core'
+import { createState, useState } from '@speigg/hookstate'
+
+import { FileContentType } from '@xrengine/common/src/interfaces/FileContentType'
+
 import { client } from '../../feathers'
 import { store, useDispatch } from '../../store'
-import { FileContentType } from '@xrengine/common/src/interfaces/FileContentType'
 
 export const state = createState({
   files: [] as Array<FileContentType>
@@ -31,10 +33,10 @@ export const FileBrowserAction = {
   }
 }
 
-let _lastDir = null
+let _lastDir = null! as string
 
 export const FileBrowserService = {
-  fetchFiles: async (directory = _lastDir) => {
+  fetchFiles: async (directory: string = _lastDir) => {
     _lastDir = directory
     const dispatch = useDispatch()
     const files = await client.service('file-browser').get(directory)
@@ -46,10 +48,10 @@ export const FileBrowserService = {
     console.log('FileBrowserService.putContent result', result)
     FileBrowserService.fetchFiles()
   },
-  moveContent: async (from, destination, isCopy = false, renameTo = null) => {
-    console.log(from, destination, isCopy, renameTo)
-    console.warn('[File Browser]: Temporarily disabled for instability. - TODO')
-    // const result = await client.service('file-browser').update(from, { destination, isCopy, renameTo })
+  moveContent: async (from, destination, isCopy = false, renameTo = null! as string) => {
+    // console.log(from, destination, isCopy, renameTo)
+    // console.warn('[File Browser]: Temporarily disabled for instability. - TODO')
+    const result = await client.service('file-browser').update(from, { destination, isCopy, renameTo })
     // console.log('FileBrowserService.moveContent result', result)
   },
   deleteContent: async (contentPath, type) => {
@@ -59,6 +61,7 @@ export const FileBrowserService = {
   addNewFolder: async (folderName) => {
     const result = await client.service(`file-browser`).create(folderName)
     console.log('FileBrowserService.addNewFolder result', result)
+    FileBrowserService.fetchFiles()
   }
 }
 

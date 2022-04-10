@@ -1,16 +1,32 @@
-import config from '@xrengine/server-core/src/appconfig'
 import fs from 'fs'
 import https from 'https'
-import app from './app'
-import logger from '@xrengine/server-core/src/logger'
+import path from 'path'
 import psList from 'ps-list'
+import favicon from 'serve-favicon'
+
+import config from '@xrengine/server-core/src/appconfig'
+import { createFeathersExpressApp } from '@xrengine/server-core/src/createApp'
 import { StartCorsServer } from '@xrengine/server-core/src/createCorsServer'
+import logger from '@xrengine/server-core/src/logger'
+
+import channels from './channels'
 
 process.on('unhandledRejection', (error, promise) => {
   console.error('UNHANDLED REJECTION - Promise: ', promise, ', Error: ', error, ').')
 })
 
 export const start = async (): Promise<void> => {
+  const app = createFeathersExpressApp()
+
+  app.use(favicon(path.join(config.server.publicDir, 'favicon.ico')))
+  app.configure(channels)
+
+  if (process.env.APP_ENV === 'development' && !config.db.forceRefresh) {
+    app.isSetup.then(() => {
+      app.service('project')._fetchDevLocalProjects()
+    })
+  }
+
   const key = process.platform === 'win32' ? 'name' : 'cmd'
   if (!config.kubernetes.enabled) {
     const processList = await (

@@ -1,10 +1,12 @@
+import { createState, useState } from '@speigg/hookstate'
+
+import { AlertColor } from '@mui/material/Alert'
+
 import { store, useDispatch } from '../../store'
-import { Config } from '@xrengine/common/src/config'
-import { createState, useState } from '@hookstate/core'
 
 //State
 const state = createState({
-  type: 'none',
+  type: 'none' as AlertType,
   message: ''
 })
 
@@ -27,24 +29,24 @@ export const useAlertState = () => useState(state) as any as typeof state
 
 let timerId: any
 
+let alertTimeout = 10000
+if (globalThis.process.env['VITE_ALERT_TIMEOUT']) alertTimeout = parseInt(globalThis.process.env['VITE_ALERT_TIMEOUT'])
+
 export const AlertService = {
   alertSuccess: async (message: string) => {
     const dispatch = useDispatch()
-    {
-      dispatch(AlertAction.showAlert('success', message))
-    }
+
+    dispatch(AlertAction.showAlert('success', message))
   },
   alertWarning: async (message: string) => {
     const dispatch = useDispatch()
-    {
-      dispatch(AlertAction.showAlert('warning', message))
-    }
+
+    dispatch(AlertAction.showAlert('warning', message))
   },
   alertError: async (message: string) => {
     const dispatch = useDispatch()
-    {
-      dispatch(AlertAction.showAlert('error', message))
-    }
+
+    dispatch(AlertAction.showAlert('error', message))
   },
   alertCancel: () => {
     useDispatch()(AlertAction.hideAlert())
@@ -58,7 +60,7 @@ export const AlertService = {
   restartTimer: () => {
     const dispatch = useDispatch()
     AlertService.clearTimer()
-    timerId = setTimeout(() => dispatch(AlertAction.hideAlert()), Config.publicRuntimeConfig?.alert?.timeout || 10000)
+    timerId = setTimeout(() => dispatch(AlertAction.hideAlert()), alertTimeout)
   },
   dispatchAlertSuccess: (message: string) => {
     const dispatch = useDispatch()
@@ -83,7 +85,7 @@ export const AlertService = {
   }
 }
 //Action
-export type AlertType = 'error' | 'success' | 'warning' | 'none'
+export type AlertType = AlertColor | 'none'
 
 export const AlertAction = {
   showAlert: (type: AlertType, message: string) => {
@@ -96,7 +98,7 @@ export const AlertAction = {
   hideAlert: () => {
     return {
       type: 'HIDE_NOTIFICATION' as const,
-      alertType: 'none',
+      alertType: 'none' as AlertType,
       message: ''
     }
   }

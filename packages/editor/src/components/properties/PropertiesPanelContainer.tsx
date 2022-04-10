@@ -1,14 +1,25 @@
-import React, { useEffect, useState } from 'react'
-import DefaultNodeEditor from './DefaultNodeEditor'
-import styled from 'styled-components'
-import TransformPropertyGroup from './TransformPropertyGroup'
-import NameInputGroup from './NameInputGroup'
-import InputGroup from '../inputs/InputGroup'
-import BooleanInput from '../inputs/BooleanInput'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
-import EditorEvents from '../../constants/EditorEvents'
-import { CommandManager } from '../../managers/CommandManager'
-import { NodeManager } from '../../managers/NodeManager'
+import styled from 'styled-components'
+
+import { hasComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { useWorld } from '@xrengine/engine/src/ecs/functions/SystemHooks'
+import { PersistTagComponent } from '@xrengine/engine/src/scene/components/PersistTagComponent'
+import { PreventBakeTagComponent } from '@xrengine/engine/src/scene/components/PreventBakeTagComponent'
+import { SceneTagComponent } from '@xrengine/engine/src/scene/components/SceneTagComponent'
+import { VisibleComponent } from '@xrengine/engine/src/scene/components/VisibleComponent'
+import { DisableTransformTagComponent } from '@xrengine/engine/src/transform/components/DisableTransformTagComponent'
+import { TransformComponent } from '@xrengine/engine/src/transform/components/TransformComponent'
+
+import { executeCommandWithHistoryOnSelection } from '../../classes/History'
+import { TagComponentOperation } from '../../commands/TagComponentCommand'
+import EditorCommands from '../../constants/EditorCommands'
+import { getNodeEditorsForEntity } from '../../functions/PrefabEditors'
+import { useSelectionState } from '../../services/SelectionServices'
+import BooleanInput from '../inputs/BooleanInput'
+import InputGroup from '../inputs/InputGroup'
+import NameInputGroup from './NameInputGroup'
+import TransformPropertyGroup from './TransformPropertyGroup'
 
 /**
  * StyledNodeEditor used as wrapper container element properties container.
@@ -17,9 +28,6 @@ import { NodeManager } from '../../managers/NodeManager'
  * @type {styled component}
  */
 const StyledNodeEditor = (styled as any).div`
-  display: flex;
-  flex: 1;
-  flex-direction: column;
 `
 
 /**
@@ -28,7 +36,6 @@ const StyledNodeEditor = (styled as any).div`
  * @author Robert Long
  */
 const PropertiesHeader = (styled as any).div`
-  background-color: ${(props) => props.theme.panel2};
   border: none !important;
   padding-bottom: 0 !important;
 `
@@ -40,10 +47,6 @@ const PropertiesHeader = (styled as any).div`
  *  @type {Styled Component}
  */
 const NameInputGroupContainer = (styled as any).div`
-  display: flex;
-  flex-flow: row wrap;
-  align-items: flex-start;
-  padding: 8px 0;
 `
 /**
  * Styled component used to provide styles for visiblity checkbox.
@@ -51,12 +54,8 @@ const NameInputGroupContainer = (styled as any).div`
  * @author Robert Long
  */
 const VisibleInputGroup = (styled as any)(InputGroup)`
-  display: flex;
-  flex: 0;
-
   & > label {
     width: auto !important;
-    padding-right: 8px;
   }
 `
 
@@ -66,12 +65,8 @@ const VisibleInputGroup = (styled as any)(InputGroup)`
  * @author Robert Long
  */
 const PersistInputGroup = (styled as any)(InputGroup)`
- display: flex;
- flex: 0;
-
  & > label {
    width: auto !important;
-   padding-right: 8px;
  }
 `
 
@@ -82,9 +77,6 @@ const PersistInputGroup = (styled as any)(InputGroup)`
  * @type {Styled Component}
  */
 const PropertiesPanelContent = (styled as any).div`
-  display: flex;
-  flex-direction: column;
-  flex: 1;
   overflow-y: auto;
   height: 100%;
 `
@@ -96,10 +88,11 @@ const PropertiesPanelContent = (styled as any).div`
  * @type {Styled component}
  */
 const NoNodeSelectedMessage = (styled as any).div`
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100%;
+  color: white;
 `
 
 /**
@@ -109,110 +102,82 @@ const NoNodeSelectedMessage = (styled as any).div`
  * @extends Component
  */
 export const PropertiesPanelContainer = () => {
-  //setting the props and state
-  const [selected, setSelected] = useState(CommandManager.instance.selected)
-  const [{ node }, setActiveNode] = useState({ node: null })
+  const selectionState = useSelectionState()
+  const selectedEntities = selectionState.selectedEntities.value
   const { t } = useTranslation()
 
-  const onSelectionChanged = () => {
-    setSelected(CommandManager.instance.selected)
-  }
-
-  useEffect(() => {
-    setActiveNode({ node: selected[selected.length - 1] })
-  }, [selected])
-
-  const onObjectsChanged = (objects, property) => {
-    const selected = CommandManager.instance.selected
-
-    setActiveNode({ node: selected[selected.length - 1] })
-
-    if (property === 'position' || property === 'rotation' || property === 'scale' || property === 'matrix') {
-      return
-    }
-
-    for (let i = 0; i < objects.length; i++) {
-      if (selected.indexOf(objects[i]) !== -1) {
-        setSelected(CommandManager.instance.selected)
-        return
-      }
-    }
-  }
-
-  useEffect(() => {
-    CommandManager.instance.addListener(EditorEvents.SELECTION_CHANGED.toString(), onSelectionChanged)
-    CommandManager.instance.addListener(EditorEvents.OBJECTS_CHANGED.toString(), onObjectsChanged)
-
-    return () => {
-      CommandManager.instance.removeListener(EditorEvents.SELECTION_CHANGED.toString(), onSelectionChanged)
-      CommandManager.instance.removeListener(EditorEvents.OBJECTS_CHANGED.toString(), onObjectsChanged)
-    }
-  }, [])
+  // access state to detect the change
+  selectionState.objectChangeCounter.value
 
   const onChangeVisible = (value) => {
-    CommandManager.instance.setPropertyOnSelection('visible', value)
+    executeCommandWithHistoryOnSelection(EditorCommands.TAG_COMPONENT, {
+      operation: {
+        component: VisibleComponent,
+        type: value ? TagComponentOperation.ADD : TagComponentOperation.REMOVE
+      }
+    })
   }
 
   const onChangeBakeStatic = (value) => {
-    CommandManager.instance.setPropertyOnSelection('includeInCubemapBake', value)
+    executeCommandWithHistoryOnSelection(EditorCommands.TAG_COMPONENT, {
+      operation: {
+        component: PreventBakeTagComponent,
+        type: value ? TagComponentOperation.ADD : TagComponentOperation.REMOVE
+      }
+    })
   }
 
   const onChangePersist = (value) => {
-    CommandManager.instance.setPropertyOnSelection('persist', value)
+    executeCommandWithHistoryOnSelection(EditorCommands.TAG_COMPONENT, {
+      operation: {
+        component: PersistTagComponent,
+        type: value ? TagComponentOperation.ADD : TagComponentOperation.REMOVE
+      }
+    })
   }
 
   //rendering editor views for customization of element properties
   let content
-  let showNodeEditor = true
-  const multiEdit = selected.length > 1
+  const multiEdit = selectedEntities.length > 1
+  const nodeEntity = selectedEntities[selectedEntities.length - 1]
+  const node = useWorld().entityTree.entityNodeMap.get(nodeEntity)
 
-  if (!node) {
+  if (!nodeEntity || !node) {
     content = <NoNodeSelectedMessage>{t('editor:properties.noNodeSelected')}</NoNodeSelectedMessage>
   } else {
-    const NodeEditor = NodeManager.instance.getEditorFromNode(node) || DefaultNodeEditor
-
-    for (let i = 0; i < selected.length - 1; i++) {
-      if (NodeManager.instance.getEditorFromNode(selected[i]) !== NodeEditor) {
-        showNodeEditor = false
-        break
-      }
-    }
-
-    let nodeEditor
-
-    if (showNodeEditor) {
-      nodeEditor = <NodeEditor multiEdit={multiEdit} node={node} />
-    } else {
-      nodeEditor = <NoNodeSelectedMessage>{t('editor:properties.multipleNodeSelected')}</NoNodeSelectedMessage>
-    }
-
-    const disableTransform = selected.some((node) => node.disableTransform)
-    const haveStaticTags = selected.some((node) => node.haveStaticTags)
+    // get all editors that this entity has a component for
+    const editors = getNodeEditorsForEntity(nodeEntity)
+    const transform =
+      hasComponent(nodeEntity, TransformComponent) &&
+      !selectedEntities.some((entity) => hasComponent(entity, DisableTransformTagComponent))
 
     content = (
       <StyledNodeEditor>
         <PropertiesHeader>
           <NameInputGroupContainer>
-            <NameInputGroup node={node} />
-            {node.nodeName !== 'Scene' && (
+            <NameInputGroup node={node} key={nodeEntity} />
+            {!hasComponent(nodeEntity, SceneTagComponent) && (
               <>
                 <VisibleInputGroup name="Visible" label={t('editor:properties.lbl-visible')}>
-                  <BooleanInput value={node.visible} onChange={onChangeVisible} />
+                  <BooleanInput value={hasComponent(nodeEntity, VisibleComponent)} onChange={onChangeVisible} />
                 </VisibleInputGroup>
-                {haveStaticTags && (
-                  <VisibleInputGroup name="Bake Static" label="Bake Static">
-                    <BooleanInput value={node.includeInCubemapBake} onChange={onChangeBakeStatic} />
-                  </VisibleInputGroup>
-                )}
+                <VisibleInputGroup name="Prevent Baking" label={t('editor:properties.lbl-preventBake')}>
+                  <BooleanInput
+                    value={hasComponent(nodeEntity, PreventBakeTagComponent)}
+                    onChange={onChangeBakeStatic}
+                  />
+                </VisibleInputGroup>
               </>
             )}
           </NameInputGroupContainer>
           <PersistInputGroup name="Persist" label={t('editor:properties.lbl-persist')}>
-            <BooleanInput value={node.persist} onChange={onChangePersist} />
+            <BooleanInput value={hasComponent(nodeEntity, PersistTagComponent)} onChange={onChangePersist} />
           </PersistInputGroup>
-          {!disableTransform && <TransformPropertyGroup node={node} />}
+          {transform && <TransformPropertyGroup node={node} />}
         </PropertiesHeader>
-        {nodeEditor}
+        {editors.map((Editor, i) => (
+          <Editor key={i} multiEdit={multiEdit} node={node} />
+        ))}
       </StyledNodeEditor>
     )
   }

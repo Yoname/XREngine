@@ -1,8 +1,10 @@
+import { createState } from '@speigg/hookstate'
 import React from 'react'
-import { createState } from '@hookstate/core'
-import { useUserState } from '../../user/services/UserService'
+
 import { createXRUI } from '@xrengine/engine/src/xrui/functions/createXRUI'
 import { useXRUIState } from '@xrengine/engine/src/xrui/functions/useXRUIState'
+
+import { useUserState } from '../../user/services/UserService'
 
 const styles = {
   avatarName: {
@@ -36,5 +38,5 @@ const CharacterDetailView = () => {
   const detailState = useXRUIState() as CharacterDetailState
   const userState = useUserState()
   const user = userState.layerUsers.find((user) => user.id.value === detailState.id.value)
-  return user ? <div style={styles.avatarName}>{user.name.value}</div> : <div></div>
+  return user ? <div style={styles.avatarName as {}}>{user.name.value}</div> : <div></div>
 }

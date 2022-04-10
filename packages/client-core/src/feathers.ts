@@ -1,15 +1,22 @@
-import io from 'socket.io-client'
 import feathers from '@feathersjs/client'
-// import type { Application } from '../../server-core/declarations'
+import type { FeathersApplication } from '@feathersjs/feathers'
+import type SocketIO from 'socket.io'
+import io from 'socket.io-client'
 
-const feathersClient = feathers() // as Application
+import type { ServiceTypes } from '@xrengine/common/declarations'
+
+const feathersClient = feathers() as FeathersApplication<ServiceTypes> & {
+  io: SocketIO.Server
+  authentication?: {
+    authenticated: boolean
+  }
+}
 const serverHost =
-  process.env.APP_ENV === 'development'
+  process.env.APP_ENV === 'development' || process.env['VITE_LOCAL_BUILD'] === 'true'
     ? `https://${(globalThis as any).process.env['VITE_SERVER_HOST']}:${
         (globalThis as any).process.env['VITE_SERVER_PORT']
       }`
     : `https://${(globalThis as any).process.env['VITE_SERVER_HOST']}`
-console.log('serverHost', serverHost)
 
 const socket = io(serverHost, {
   withCredentials: true
@@ -17,7 +24,7 @@ const socket = io(serverHost, {
 feathersClient.configure(feathers.socketio(socket, { timeout: 10000 }))
 feathersClient.configure(
   feathers.authentication({
-    storageKey: process.env.FEATHERS_STORE_KEY
+    storageKey: globalThis.process.env['VITE_FEATHERS_STORE_KEY']
   })
 )
 

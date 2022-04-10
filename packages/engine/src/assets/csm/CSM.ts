@@ -1,18 +1,19 @@
 import {
+  Box3,
+  DirectionalLight,
+  Material,
+  MathUtils,
+  Matrix4,
+  Mesh,
+  Object3D,
+  PerspectiveCamera,
+  ShaderChunk,
+  Shader as ShaderType,
   Vector2,
   Vector3,
-  DirectionalLight,
-  MathUtils,
-  ShaderChunk,
-  Matrix4,
-  Box3,
-  Object3D,
-  WebGLRenderTarget,
-  PerspectiveCamera,
-  Material,
-  Shader as ShaderType,
-  Mesh
+  WebGLRenderTarget
 } from 'three'
+
 import Frustum from './Frustum'
 import Shader from './Shader'
 
@@ -99,7 +100,6 @@ export class CSM {
   createLights(lights?: DirectionalLight[]): void {
     // TODO: support multiple lights (requires shader changes)
 
-    // for (const sourceLightIndex in lights) {
     if (lights?.length) {
       const sourceLightIndex = 0
       const sourceLight = lights[sourceLightIndex]
@@ -109,9 +109,11 @@ export class CSM {
         const light = sourceLight.clone()
         light.target = sourceLight.target.clone()
         light.castShadow = true
+        light.visible = true
         this.parent.add(light, light.target)
         this.lights[sourceLightIndex].push(light)
       }
+
       return
     }
 
@@ -294,7 +296,12 @@ export class CSM {
     const breaksVec2 = []
     const shaders = this.shaders
 
-    material.onBeforeCompile = (shader: ShaderType) => {
+    const originalOnBeforeCompile = material.onBeforeCompile
+    const CSMonBeforeCompile = (shader: ShaderType, renderer) => {
+      if (!this.camera) {
+        if (originalOnBeforeCompile) originalOnBeforeCompile(shader, renderer)
+        return
+      }
       const far = Math.min(this.camera.far, this.maxFar)
       this.getExtendedBreaks(breaksVec2)
 
@@ -304,6 +311,7 @@ export class CSM {
 
       shaders.set(material, shader)
     }
+    material.onBeforeCompile = CSMonBeforeCompile
 
     shaders.set(material, null!)
     this.materials.set(mesh, material)
@@ -367,7 +375,7 @@ export class CSM {
   dispose(): void {
     const shaders = this.shaders
     shaders.forEach(function (shader: ShaderType, material: Material) {
-      material.onBeforeCompile = null!
+      material.onBeforeCompile = () => {}
       material.defines!.USE_CSM = null!
       material.defines!.CSM_CASCADES = null!
       material.defines!.CSM_FADE = null!

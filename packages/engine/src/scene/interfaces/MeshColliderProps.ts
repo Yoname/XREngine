@@ -1,4 +1,5 @@
 import { Quaternion, Vector3 } from 'three'
+
 import { ColliderTypes } from '../../physics/types/PhysicsTypes'
 
 export interface MeshColliderProps {
@@ -11,7 +12,6 @@ export interface MeshColliderProps {
   type: ColliderTypes
   mass: number
   isTrigger: boolean
-  sceneEntityId: string
   collisionLayer: string | number
   collisionMask: string | number
 }

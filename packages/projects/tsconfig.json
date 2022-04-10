@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "lib": [
-      "esnext",
-      "dom",
-      "dom.iterable"
-    ],
+    "lib": ["esnext", "dom", "dom.iterable"],
     "allowJs": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -28,8 +24,7 @@
   },
   "exclude": [
     "../projects/projects/**",
-    "**/node_modules/**",
-    "../../node_modules/k8s/*"
+    "**/node_modules/**"
   ],
   "include": [
     "./**/*.ts",

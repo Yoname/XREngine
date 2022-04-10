@@ -1,98 +1,128 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { AssetsPanelContainer } from '../layout/Flex'
-import styles from './styles.module.scss'
-import { AssetPanelContentContainer } from './AssetsPanel'
-import AudioNode from '../../nodes/AudioNode'
-import ImageNode from '../../nodes/ImageNode'
-import ModelNode from '../../nodes/ModelNode'
-import VideoNode from '../../nodes/VideoNode'
-import { NodeManager } from '../../managers/NodeManager'
-import FileBrowserGrid from './FileBrowserGrid'
+import { Downgraded } from '@speigg/hookstate'
+import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ContextMenu, ContextMenuTrigger, MenuItem } from '../layout/ContextMenu'
-import { ToolButton } from '../toolbar/ToolButton'
+
+import ConfirmModal from '@xrengine/client-core/src/admin/common/ConfirmModal'
+import { FileBrowserService, useFileBrowserState } from '@xrengine/client-core/src/common/services/FileBrowserService'
+import { ScenePrefabs } from '@xrengine/engine/src/scene/functions/registerPrefabs'
+
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AutorenewIcon from '@mui/icons-material/Autorenew'
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
-import { FileBrowserService, useFileBrowserState } from '@xrengine/client-core/src/common/services/FileBrowserService'
-import useElementResize from 'element-resize-event'
-import { Downgraded } from '@hookstate/core'
+import Breadcrumbs from '@mui/material/Breadcrumbs'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import Grid from '@mui/material/Grid'
+import Link from '@mui/material/Link'
+import Typography from '@mui/material/Typography'
+
+import { prefabIcons } from '../../functions/PrefabEditors'
+import { ContextMenu, ContextMenuTrigger, MenuItem } from '../layout/ContextMenu'
+import { ToolButton } from '../toolbar/ToolButton'
+import FileBrowserGrid from './FileBrowserGrid'
 import { FileDataType } from './FileDataType'
+import styles from './styles.module.scss'
 
 /**
  * @author Abhishek Pathak
  */
-
-export const UploadFileType = {
-  gltf: ModelNode,
-  'gltf-binary': ModelNode,
-  glb: ModelNode,
-  png: ImageNode,
-  jpeg: ImageNode,
-  mp4: VideoNode,
-  mpeg: AudioNode,
-  mp3: AudioNode,
-  'model/gltf-binary': ModelNode,
-  'model/gltf': ModelNode,
-  'model/glb': ModelNode,
-  'image/png': ImageNode,
-  'image/jpeg': ImageNode,
+export const PrefabFileType = {
+  gltf: ScenePrefabs.model,
+  'gltf-binary': ScenePrefabs.model,
+  glb: ScenePrefabs.model,
+  png: ScenePrefabs.image,
+  jpeg: ScenePrefabs.image,
+  jpg: ScenePrefabs.image,
+  mp4: ScenePrefabs.video,
+  mpeg: ScenePrefabs.audio,
+  mp3: ScenePrefabs.audio,
+  'model/gltf-binary': ScenePrefabs.model,
+  'model/gltf': ScenePrefabs.model,
+  'model/glb': ScenePrefabs.model,
+  'image/png': ScenePrefabs.image,
+  'image/jpeg': ScenePrefabs.image,
+  'image/jpg': ScenePrefabs.image,
   'application/pdf': null,
-  'video/mp4': VideoNode,
-  'audio/mpeg': AudioNode,
-  'audio/mp3': AudioNode
+  'video/mp4': ScenePrefabs.video,
+  'audio/mpeg': ScenePrefabs.audio,
+  'audio/mp3': ScenePrefabs.audio
 }
+
+type FileBrowserContentPanelProps = {
+  onSelectionChanged: (AssetSelectionChangePropsType) => void
+  selectedFile?: string
+}
+
 /**
  * FileBrowserPanel used to render view for AssetsPanel.
  * @author Abhishek Pathak
  * @constructor
  */
-
-export default function FileBrowserContentPanel({ onSelectionChanged }) {
+const FileBrowserContentPanel: React.FC<FileBrowserContentPanelProps> = (props) => {
   const { t } = useTranslation()
-  const panelRef = useRef(null)
-  // const [scrollWindowWidth, setScrollWindowWidth] = useState(0)
-  const [scrollWindowHeight, setScrollWindowHeight] = useState(750)
   const [isLoading, setLoading] = useState(true)
-  const [selectedDirectory, setSelectedDirectory] = useState('/projects/')
+  const [selectedDirectory, setSelectedDirectory] = useState(
+    `/projects/${props.selectedFile ? props.selectedFile + '/' : ''}`
+  )
   const fileState = useFileBrowserState()
   const filesValue = fileState.files.attach(Downgraded).value
+  const [fileProperties, setFileProperties] = useState<any>(null)
+  const [openPropertiesConfirmModal, setOpenPropertiesModal] = useState(false)
+  const [openConfirmModal, setConfirmModal] = useState(false)
+  const [contentToDeletePath, setContentToDeletePath] = useState('')
+  const [contentToDeleteType, setContentToDeleteType] = useState('')
 
-  useEffect(() => {
-    useElementResize(panelRef.current, () => {
-      // setScrollWindowWidth(panelRef.current.clientWidth)
-      setScrollWindowHeight(panelRef.current.clientHeight)
+  const breadcrumbs = selectedDirectory
+    .slice(1, -1)
+    .split('/')
+    .map((file, index, arr) => {
+      if (arr.length - 1 == index) {
+        return (
+          <Typography key={file} style={{ color: '#fff', fontSize: '0.9rem' }}>
+            {file}
+          </Typography>
+        )
+      } else {
+        return (
+          <Link
+            underline="hover"
+            key={file}
+            color="#5d646c"
+            style={{ fontSize: '0.9rem' }}
+            href="#"
+            onClick={() => handleClick(file)}
+          >
+            {file}
+          </Link>
+        )
+      }
     })
-  }, [panelRef.current])
 
-  const onSelect = (props) => {
-    if (props.type !== 'folder') {
-      onSelectionChanged({ resourceUrl: props.description, name: props.label, contentType: props.type })
+  const onSelect = (params: FileDataType) => {
+    if (params.type !== 'folder') {
+      props.onSelectionChanged({
+        resourceUrl: params.description,
+        name: params.label,
+        contentType: params.type
+      })
     } else {
-      const newPath = `${selectedDirectory}${props.label}/`
-      console.log('New Path for the DIrectory is:' + newPath)
+      const newPath = `${selectedDirectory}${params.label}/`
       setSelectedDirectory(newPath)
     }
   }
 
-  const files = fileState.files.value.map((file): FileDataType => {
-    const nodeClass = UploadFileType[file.type]
-    const nodeEditor = NodeManager.instance.getEditorFromClass(nodeClass)
-    const iconComponent = nodeEditor
-      ? nodeEditor.WrappedComponent
-        ? nodeEditor.WrappedComponent.iconComponent
-        : nodeEditor.iconComponent
-      : InsertDriveFileIcon
-    const url = file.url
+  const files: FileDataType[] = fileState.files.value.map((file) => {
+    const prefabType = PrefabFileType[file.type]
+
     return {
-      description: url,
+      description: file.url,
       id: file.key,
       label: file.name,
-      nodeClass: nodeClass,
-      url: url,
+      size: file.size,
+      nodeClass: prefabType,
+      prefabType,
+      url: file.url,
       type: file.type,
-      initialProps: { src: new URL(url) },
-      iconComponent
+      Icon: prefabIcons[prefabType]
     }
   })
 
@@ -104,10 +134,25 @@ export default function FileBrowserContentPanel({ onSelectionChanged }) {
     onRefreshDirectory()
   }, [selectedDirectory])
 
-  const addNewFolder = async () => {
+  const addNewFolder = async (folder: any, item: any) => {
     if (isLoading) return
     setLoading(true)
-    await FileBrowserService.addNewFolder(`${selectedDirectory}New_Folder`)
+    if (!folder) {
+      await FileBrowserService.addNewFolder(`${selectedDirectory}New_Folder`)
+    } else {
+      folder?.files.forEach(async (file) => {
+        let path = selectedDirectory
+        if (item.type == 'folder') {
+          path =
+            selectedDirectory.split('/')[-1] == item.label ? selectedDirectory : selectedDirectory + item.label + '/'
+        }
+        if (!file.type) {
+          await FileBrowserService.addNewFolder(`${path}${file.name}`)
+        } else {
+          await FileBrowserService.putContent(`${path}${file.name}`, file, file.type)
+        }
+      })
+    }
     onRefreshDirectory()
   }
 
@@ -126,17 +171,30 @@ export default function FileBrowserContentPanel({ onSelectionChanged }) {
     setSelectedDirectory(newPath)
   }
 
-  const moveContent = async (from, to, isCopy = false, renameTo = null) => {
+  const moveContent = async (from: string, to: string, isCopy = false, renameTo = null! as string): Promise<void> => {
     if (isLoading) return
     setLoading(true)
     await FileBrowserService.moveContent(from, to, isCopy, renameTo)
     onRefreshDirectory()
   }
 
-  const deleteContent = async ({ contentPath, type }) => {
+  const handleConfirmDelete = (contentPath: string, type: string) => {
+    setConfirmModal(true)
+    setContentToDeletePath(contentPath)
+    setContentToDeleteType(type)
+  }
+
+  const handleCloseModal = () => {
+    setConfirmModal(false)
+    setContentToDeletePath('')
+    setContentToDeleteType('')
+  }
+
+  const deleteContent = async (): Promise<void> => {
     if (isLoading) return
     setLoading(true)
-    await FileBrowserService.deleteContent(contentPath, type)
+    setConfirmModal(false)
+    await FileBrowserService.deleteContent(contentToDeletePath, contentToDeleteType)
     onRefreshDirectory()
   }
 
@@ -151,37 +209,100 @@ export default function FileBrowserContentPanel({ onSelectionChanged }) {
     onRefreshDirectory()
   }
 
-  let currentContent = null
+  let currentContent = null! as any
   const currentContentRef = useRef(currentContent)
 
-  const headGrid = { display: 'grid', gridTemplateColumns: '1fr auto', gridGap: '20px' }
+  const headGrid = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '20px'
+  }
+
+  function handleClick(targetFolder: string) {
+    const pattern = /([^\/]+)/g
+    const result = selectedDirectory.match(pattern)
+    if (!result) return
+    let newPath = '/'
+    for (const folder of result) {
+      if (folder != targetFolder) {
+        newPath += folder + '/'
+      } else {
+        newPath += folder + '/'
+        break
+      }
+    }
+    setSelectedDirectory(newPath)
+  }
+
   return (
     <>
       <div style={headGrid}>
         <ToolButton icon={ArrowBackIcon} onClick={onBackDirectory} id="backDir" />
+        <Breadcrumbs maxItems={3} classes={{ separator: styles.separator }} separator="›" aria-label="breadcrumb">
+          {breadcrumbs}
+        </Breadcrumbs>
         <ToolButton icon={AutorenewIcon} onClick={onRefreshDirectory} id="refreshDir" />
       </div>
 
       <ContextMenuTrigger id={'uniqueId_current'} holdToDisplay={-1}>
-        <AssetsPanelContainer ref={panelRef} id="file-browser-panel" className={styles.assetsPanel}>
-          <AssetPanelContentContainer>
+        <div id="file-browser-panel" className={styles.panelContainer}>
+          <div className={styles.contentContainer}>
             <FileBrowserGrid
               items={files}
-              scrollWindowHeight={scrollWindowHeight}
               onSelect={onSelect}
               isLoading={isLoading}
               moveContent={moveContent}
-              deleteContent={deleteContent}
+              deleteContent={handleConfirmDelete}
               currentContent={currentContentRef}
+              setOpenPropertiesModal={setOpenPropertiesModal}
+              setFileProperties={setFileProperties}
+              addNewFolder={addNewFolder}
             />
-          </AssetPanelContentContainer>
-        </AssetsPanelContainer>
+          </div>
+        </div>
       </ContextMenuTrigger>
 
       <ContextMenu id={'uniqueId_current'} hideOnLeave={true}>
-        <MenuItem onClick={addNewFolder}>{t('editor:layout.filebrowser.addNewFolder')}</MenuItem>
+        <MenuItem onClick={() => addNewFolder(null, null)}>{t('editor:layout.filebrowser.addNewFolder')}</MenuItem>
         <MenuItem onClick={pasteContent}>{t('editor:layout.filebrowser.pasteAsset')}</MenuItem>
       </ContextMenu>
+      {openPropertiesConfirmModal && fileProperties && (
+        <Dialog
+          open={openPropertiesConfirmModal}
+          onClose={() => setOpenPropertiesModal(false)}
+          aria-labelledby="alert-dialog-title"
+          aria-describedby="alert-dialog-description"
+          classes={{ paper: styles.paperDialog }}
+        >
+          <DialogTitle style={{ padding: '0', textTransform: 'capitalize' }} id="alert-dialog-title">
+            {`${fileProperties?.label} ${fileProperties?.type == 'folder' ? 'folder' : 'file'} Properties`}
+          </DialogTitle>
+          <Grid container spacing={3} style={{ width: '100%', margin: '0' }}>
+            <Grid item xs={4} style={{ paddingLeft: '10px', paddingTop: '10px', width: '100%' }}>
+              <Typography className={styles.primatyText}>Name:</Typography>
+              <Typography className={styles.primatyText}>Type:</Typography>
+              <Typography className={styles.primatyText}>Size:</Typography>
+              <Typography className={styles.primatyText}>URL:</Typography>
+            </Grid>
+            <Grid item xs={8} style={{ paddingLeft: '10px', paddingTop: '10px', width: '100%' }}>
+              <Typography className={styles.secondaryText}>{fileProperties?.label}</Typography>
+              <Typography className={styles.secondaryText}>{fileProperties?.type}</Typography>
+              <Typography className={styles.secondaryText}>{fileProperties?.size}</Typography>
+              <Typography className={styles.secondaryText}>{fileProperties?.url}</Typography>
+            </Grid>
+          </Grid>
+        </Dialog>
+      )}
+      <ConfirmModal
+        popConfirmOpen={openConfirmModal}
+        handleCloseModal={handleCloseModal}
+        submit={deleteContent}
+        name={''}
+        label={`this ${contentToDeleteType == 'folder' ? 'folder' : 'file'}`}
+      />
     </>
   )
 }
+
+export default FileBrowserContentPanel

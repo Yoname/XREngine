@@ -1,18 +1,19 @@
 import React, { useEffect, useRef } from 'react'
+import { FileDrop } from 'react-file-drop'
 import {
-  Scene,
-  WebGLRenderer,
+  AnimationClip,
+  AnimationMixer,
   Color,
   DirectionalLight,
-  AnimationMixer,
-  AnimationClip,
+  HemisphereLight,
   PerspectiveCamera,
-  HemisphereLight
+  Scene,
+  WebGLRenderer
 } from 'three'
-import { OrbitControls } from '@xrengine/engine/src/input/functions/OrbitControls'
-import { getLoader } from '@xrengine/engine/src/assets/functions/LoadGLTF'
-import { FileDrop } from 'react-file-drop'
+
+import { AssetLoader } from '@xrengine/engine/src/assets/classes/AssetLoader'
 import { SkeletonUtils } from '@xrengine/engine/src/avatar/SkeletonUtils'
+import { OrbitControls } from '@xrengine/engine/src/input/functions/OrbitControls'
 
 const canvasStyle = {
   zIndex: 0,
@@ -33,9 +34,9 @@ const LocationPage = () => {
 
 export default LocationPage
 let scene = new Scene()
-let animationMixers = []
+let animationMixers = [] as AnimationMixer[]
 let clips
-getLoader().load('/default_assets/Animations.glb', (gltf) => {
+AssetLoader.load('/default_assets/Animations.glb', (gltf) => {
   console.log(gltf)
   clips = gltf.animations
   clips.forEach((clip) => {
@@ -78,7 +79,7 @@ async function init(): Promise<any> {
 const engineRendererCanvasId = 'engine-renderer-canvas'
 let count = 0
 const DevPage = () => {
-  const fileInputRef = useRef(null)
+  const fileInputRef = useRef<any>(null)
 
   useEffect(() => {
     init()
@@ -94,7 +95,7 @@ const DevPage = () => {
 
     scene.remove
 
-    getLoader().load(fileURL, (gltf) => {
+    AssetLoader.load(fileURL, (gltf) => {
       URL.revokeObjectURL(fileURL)
 
       scene.remove(model)

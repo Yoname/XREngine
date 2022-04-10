@@ -1,18 +1,14 @@
 import React from 'react'
-import NodeEditor from './NodeEditor'
-import TimelineIcon from '@mui/icons-material/Timeline'
 import { useTranslation } from 'react-i18next'
-import { PropertiesPanelButton } from '../inputs/Button'
 
-/**
- * Define properties for SplineNodeEditor component.
- *
- * @author Hamza Mushtaq
- * @type {Object}
- */
-type SplineNodeEditorProps = {
-  node?: object
-}
+import { getComponent } from '@xrengine/engine/src/ecs/functions/ComponentFunctions'
+import { Object3DComponent } from '@xrengine/engine/src/scene/components/Object3DComponent'
+
+import TimelineIcon from '@mui/icons-material/Timeline'
+
+import { PropertiesPanelButton } from '../inputs/Button'
+import NodeEditor from './NodeEditor'
+import { EditorComponentType } from './Util'
 
 /**
  * SplineNodeEditor used to create and customize splines in the scene.
@@ -22,11 +18,13 @@ type SplineNodeEditorProps = {
  * @constructor
  */
 
-export const SplineNodeEditor = (props: SplineNodeEditorProps) => {
+export const SplineNodeEditor: EditorComponentType = (props) => {
   const { t } = useTranslation()
 
   const onAddNode = () => {
-    props.node?.onAddNodeToSpline()
+    const obj3d = getComponent(props.node.entity, Object3DComponent).value
+    const newSplineObject = obj3d.userData.helper.addPoint()
+    obj3d.add(newSplineObject)
   }
 
   return (

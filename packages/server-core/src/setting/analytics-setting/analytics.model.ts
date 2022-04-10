@@ -1,18 +1,17 @@
-import { DataTypes, Sequelize } from 'sequelize'
+import { DataTypes, Model, Sequelize } from 'sequelize'
+
+import { AnalyticsSettingInterface } from '@xrengine/common/src/dbmodels/AnalyticsSetting'
+
 import { Application } from '../../../declarations'
 
 export default (app: Application) => {
   const sequelizeClient: Sequelize = app.get('sequelizeClient')
-  const Analytics = sequelizeClient.define('analyticsSetting', {
+  const Analytics = sequelizeClient.define<Model<AnalyticsSettingInterface>>('analyticsSetting', {
     id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV1,
       allowNull: false,
       primaryKey: true
-    },
-    enabled: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true
     },
     port: {
       type: DataTypes.STRING,
